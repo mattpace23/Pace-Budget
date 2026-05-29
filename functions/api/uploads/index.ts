@@ -104,27 +104,39 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
     if (r.posted_at_iso > latest) latest = r.posted_at_iso;
   }
 
-  // Insert with dedup via the UNIQUE constraint on
-  // (account_id, posted_at_iso, amount_cents, description).
+  // Compute per-batch ordinals BEFORE inserting. Two rows in the same upload
+  // that share (date, amount, description) become ordinals 1 and 2; a third
+  // becomes 3; etc. Re-uploading the same file maps to the same ordinals,
+  // so duplicates are still detected via the UNIQUE constraint.
+  const rowsWithOrdinal: (IncomingRow & { dedup_ordinal: number })[] = [];
+  const perKeyCount = new Map<string, number>();
+  for (const r of rows) {
+    const key = `${r.posted_at_iso}|${r.amount_cents}|${r.description}`;
+    const next = (perKeyCount.get(key) ?? 0) + 1;
+    perKeyCount.set(key, next);
+    rowsWithOrdinal.push({ ...r, dedup_ordinal: next });
+  }
+
   try {
     let inserted = 0;
     let duplicated = 0;
 
     // D1 supports batches; chunk into groups to stay within statement limits.
     const CHUNK = 50;
-    for (let i = 0; i < rows.length; i += CHUNK) {
-      const chunk = rows.slice(i, i + CHUNK);
+    for (let i = 0; i < rowsWithOrdinal.length; i += CHUNK) {
+      const chunk = rowsWithOrdinal.slice(i, i + CHUNK);
       const statements = chunk.map((r) =>
         ctx.env.DB.prepare(
           `INSERT OR IGNORE INTO transactions
-             (account_id, posted_at_iso, description, amount_cents, raw_classification)
-           VALUES (?, ?, ?, ?, ?)`,
+             (account_id, posted_at_iso, description, amount_cents, raw_classification, dedup_ordinal)
+           VALUES (?, ?, ?, ?, ?, ?)`,
         ).bind(
           accountId,
           r.posted_at_iso,
           r.description,
           r.amount_cents,
           r.raw_classification ?? null,
+          r.dedup_ordinal,
         ),
       );
       const batchResults = await ctx.env.DB.batch(statements);
