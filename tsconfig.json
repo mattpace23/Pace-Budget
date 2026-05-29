@@ -16,6 +16,5 @@
     "noFallthroughCasesInSwitch": true,
     "types": ["@cloudflare/workers-types", "vite/client"]
   },
-  "include": ["src", "functions"],
-  "references": [{ "path": "./tsconfig.node.json" }]
+  "include": ["src", "functions"]
 }
