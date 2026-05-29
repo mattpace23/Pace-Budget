@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build output
+dist/
+build/
+.wrangler/
+
+# Environment & secrets
+.env
+.env.local
+.env.*.local
+.dev.vars
+
+# CSVs — never commit financial data
+*.csv
+
+# Editor
+.DS_Store
+.vscode/
+.idea/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Reference materials (local-only)
+reference/

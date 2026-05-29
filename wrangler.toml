@@ -1,0 +1,11 @@
+name = "pace-budget"
+compatibility_date = "2025-05-01"
+pages_build_output_dir = "dist"
+
+# D1 database binding. The `database_id` value will be filled in after
+# you create the database with: wrangler d1 create pace-budget
+[[d1_databases]]
+binding = "DB"
+database_name = "pace-budget"
+database_id = "REPLACE_AFTER_CREATING_DB"
+migrations_dir = "schema/migrations"
