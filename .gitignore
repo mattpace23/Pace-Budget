@@ -28,3 +28,4 @@ npm-debug.log*
 
 # Reference materials (local-only)
 reference/
+*.tsbuildinfo

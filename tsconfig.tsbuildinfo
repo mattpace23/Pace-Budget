@@ -1,1 +1,0 @@
-{"root":["./src/app.tsx","./src/main.tsx","./src/pages/home.tsx","./src/pages/login.tsx","./functions/_middleware.ts","./functions/api/health.ts","./functions/api/auth/login.ts","./functions/api/auth/logout.ts","./functions/api/auth/me.ts","./functions/lib/auth.ts"],"version":"5.9.3"}
