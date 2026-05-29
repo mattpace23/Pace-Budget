@@ -15,6 +15,34 @@ export type Settings = {
   savings_starting_as_of_iso?: string;
 };
 
+export type Account = {
+  id: number;
+  name: string;
+  kind: "checking" | "credit_card";
+  parser: "main_checking" | "chase_reserve" | "chase_amazon";
+  created_at: number;
+};
+
+export type Upload = {
+  id: number;
+  account_id: number;
+  account_name: string;
+  filename: string;
+  earliest_date_iso: string;
+  latest_date_iso: string;
+  row_count: number;
+  rows_inserted: number;
+  rows_duplicated: number;
+  uploaded_at: number;
+};
+
+export type UploadRowInput = {
+  posted_at_iso: string;
+  description: string;
+  amount_cents: number;
+  raw_classification?: string;
+};
+
 export class ApiError extends Error {
   constructor(public status: number, public payload: unknown) {
     super(`API ${status}: ${JSON.stringify(payload)}`);
@@ -63,6 +91,19 @@ export const api = {
   }) =>
     request<{ settings: Settings }>("/api/settings", {
       method: "PATCH",
+      body: JSON.stringify(input),
+    }),
+
+  listAccounts: () => request<{ accounts: Account[] }>("/api/accounts"),
+
+  listUploads: () => request<{ uploads: Upload[] }>("/api/uploads"),
+  createUpload: (input: {
+    account_id: number;
+    filename: string;
+    rows: UploadRowInput[];
+  }) =>
+    request<{ upload: Upload }>("/api/uploads", {
+      method: "POST",
       body: JSON.stringify(input),
     }),
 };

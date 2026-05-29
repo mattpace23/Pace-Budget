@@ -9,6 +9,7 @@ import {
 import Login from "./pages/Login";
 import Home from "./pages/Home";
 import Budget from "./pages/Budget";
+import UploadPage from "./pages/Upload";
 
 type AuthState = "loading" | "authed" | "unauthed";
 
@@ -72,6 +73,7 @@ function AuthedShell({ onLogout }: { onLogout: () => void }) {
             <nav className="flex gap-1 text-sm">
               <NavTab to="/">Scoreboard</NavTab>
               <NavTab to="/budget">Budget</NavTab>
+              <NavTab to="/upload">Upload</NavTab>
             </nav>
           </div>
           <button onClick={logout} className="text-sm text-muted hover:text-ink">
@@ -83,6 +85,7 @@ function AuthedShell({ onLogout }: { onLogout: () => void }) {
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/budget" element={<Budget />} />
+          <Route path="/upload" element={<UploadPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
