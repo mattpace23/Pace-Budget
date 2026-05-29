@@ -14,10 +14,10 @@
     "db:console:remote": "wrangler d1 execute pace-budget --remote --command"
   },
   "dependencies": {
+    "papaparse": "^5.4.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^6.26.2",
-    "papaparse": "^5.4.1"
+    "react-router-dom": "^6.26.2"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20240925.0",
@@ -30,6 +30,6 @@
     "tailwindcss": "^3.4.13",
     "typescript": "^5.6.2",
     "vite": "^5.4.8",
-    "wrangler": "^3.78.10"
+    "wrangler": "^4.95.0"
   }
 }

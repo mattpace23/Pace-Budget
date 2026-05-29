@@ -7,5 +7,5 @@ pages_build_output_dir = "dist"
 [[d1_databases]]
 binding = "DB"
 database_name = "pace-budget"
-database_id = "REPLACE_AFTER_CREATING_DB"
+database_id = "54686172-1520-42fc-9745-8653079048c8"
 migrations_dir = "schema/migrations"
