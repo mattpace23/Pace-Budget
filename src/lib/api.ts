@@ -43,6 +43,38 @@ export type UploadRowInput = {
   raw_classification?: string;
 };
 
+export type TransactionSplit = {
+  id: number;
+  transaction_id: number;
+  category_id: number;
+  category_name: string;
+  amount_cents: number;
+};
+
+export type Transaction = {
+  id: number;
+  account_id: number;
+  account_name: string;
+  posted_at_iso: string;
+  description: string;
+  amount_cents: number;
+  raw_classification: string | null;
+  is_transfer: boolean;
+  category_id: number | null;
+  category_name: string | null;
+  misc_income_id: number | null;
+  notes: string | null;
+  dedup_ordinal: number;
+  created_at: number;
+  splits: TransactionSplit[];
+};
+
+export type TransactionsResponse = {
+  month: string;
+  counts: { total: number; uncategorized: number; transfers: number };
+  transactions: Transaction[];
+};
+
 export class ApiError extends Error {
   constructor(public status: number, public payload: unknown) {
     super(`API ${status}: ${JSON.stringify(payload)}`);
@@ -105,5 +137,43 @@ export const api = {
     request<{ upload: Upload }>("/api/uploads", {
       method: "POST",
       body: JSON.stringify(input),
+    }),
+
+  listTransactions: (opts: {
+    month?: string;
+    account_id?: number;
+    status?: "all" | "uncategorized" | "categorized" | "transfer";
+  } = {}) => {
+    const q = new URLSearchParams();
+    if (opts.month) q.set("month", opts.month);
+    if (opts.account_id) q.set("account_id", String(opts.account_id));
+    if (opts.status) q.set("status", opts.status);
+    const qs = q.toString();
+    return request<TransactionsResponse>(`/api/transactions${qs ? `?${qs}` : ""}`);
+  },
+  updateTransaction: (
+    id: number,
+    patch: {
+      category_id?: number | null;
+      is_transfer?: boolean;
+      notes?: string | null;
+      misc_income_id?: number | null;
+    },
+  ) =>
+    request<{ ok: true }>(`/api/transactions/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }),
+  setSplits: (
+    id: number,
+    splits: { category_id: number; amount_cents: number }[],
+  ) =>
+    request<{ ok: true; splits: number }>(`/api/transactions/${id}/splits`, {
+      method: "PUT",
+      body: JSON.stringify({ splits }),
+    }),
+  clearSplits: (id: number) =>
+    request<{ ok: true }>(`/api/transactions/${id}/splits`, {
+      method: "DELETE",
     }),
 };
