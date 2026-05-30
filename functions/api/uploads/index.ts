@@ -2,6 +2,7 @@
 // POST /api/uploads  → ingest a parsed CSV's rows
 
 import { json, badRequest, serverError, toInt } from "../../lib/db";
+import { autoApply } from "../../lib/merchant";
 
 interface Env {
   DB: D1Database;
@@ -108,28 +109,43 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
   // that share (date, amount, description) become ordinals 1 and 2; a third
   // becomes 3; etc. Re-uploading the same file maps to the same ordinals,
   // so duplicates are still detected via the UNIQUE constraint.
-  const rowsWithOrdinal: (IncomingRow & { dedup_ordinal: number })[] = [];
+  // Also run auto-categorization (hardcoded rules + learned merchant_memory).
+  const categoryCache = new Map<string, number | null>();
+  const rowsAugmented: (IncomingRow & {
+    dedup_ordinal: number;
+    is_transfer: 0 | 1;
+    category_id: number | null;
+  })[] = [];
   const perKeyCount = new Map<string, number>();
   for (const r of rows) {
     const key = `${r.posted_at_iso}|${r.amount_cents}|${r.description}`;
     const next = (perKeyCount.get(key) ?? 0) + 1;
     perKeyCount.set(key, next);
-    rowsWithOrdinal.push({ ...r, dedup_ordinal: next });
+    const auto = await autoApply(ctx.env.DB, r.description, categoryCache);
+    rowsAugmented.push({
+      ...r,
+      dedup_ordinal: next,
+      is_transfer: auto.is_transfer,
+      category_id: auto.category_id,
+    });
   }
 
   try {
     let inserted = 0;
     let duplicated = 0;
+    let autoCategorized = 0;
+    let autoTransferred = 0;
 
     // D1 supports batches; chunk into groups to stay within statement limits.
     const CHUNK = 50;
-    for (let i = 0; i < rowsWithOrdinal.length; i += CHUNK) {
-      const chunk = rowsWithOrdinal.slice(i, i + CHUNK);
+    for (let i = 0; i < rowsAugmented.length; i += CHUNK) {
+      const chunk = rowsAugmented.slice(i, i + CHUNK);
       const statements = chunk.map((r) =>
         ctx.env.DB.prepare(
           `INSERT OR IGNORE INTO transactions
-             (account_id, posted_at_iso, description, amount_cents, raw_classification, dedup_ordinal)
-           VALUES (?, ?, ?, ?, ?, ?)`,
+             (account_id, posted_at_iso, description, amount_cents, raw_classification,
+              dedup_ordinal, is_transfer, category_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         ).bind(
           accountId,
           r.posted_at_iso,
@@ -137,12 +153,21 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
           r.amount_cents,
           r.raw_classification ?? null,
           r.dedup_ordinal,
+          r.is_transfer,
+          r.category_id,
         ),
       );
       const batchResults = await ctx.env.DB.batch(statements);
-      for (const br of batchResults) {
-        if (br.meta.changes && br.meta.changes > 0) inserted++;
-        else duplicated++;
+      for (let j = 0; j < batchResults.length; j++) {
+        const br = batchResults[j];
+        const augmented = chunk[j];
+        if (br.meta.changes && br.meta.changes > 0) {
+          inserted++;
+          if (augmented.is_transfer === 1) autoTransferred++;
+          else if (augmented.category_id !== null) autoCategorized++;
+        } else {
+          duplicated++;
+        }
       }
     }
 
@@ -166,7 +191,7 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
       .bind(uploadResult.meta.last_row_id)
       .first<UploadRow & { account_name: string }>();
 
-    return json({ upload }, 201);
+    return json({ upload, auto_categorized: autoCategorized, auto_transferred: autoTransferred }, 201);
   } catch (e) {
     return serverError((e as Error).message);
   }

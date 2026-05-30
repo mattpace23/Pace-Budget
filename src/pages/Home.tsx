@@ -18,6 +18,8 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [splittingTx, setSplittingTx] = useState<Transaction | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+  const [rescanning, setRescanning] = useState(false);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -42,22 +44,53 @@ export default function Home() {
   async function handleCategoryChange(tx: Transaction, value: string) {
     setError(null);
     try {
+      let result: { ok: true; propagated?: number };
       if (value === "transfer") {
-        await api.updateTransaction(tx.id, { is_transfer: true });
+        result = await api.updateTransaction(tx.id, { is_transfer: true });
       } else if (value === "") {
-        await api.updateTransaction(tx.id, {
+        result = await api.updateTransaction(tx.id, {
           category_id: null,
           is_transfer: false,
         });
       } else {
-        await api.updateTransaction(tx.id, {
+        result = await api.updateTransaction(tx.id, {
           category_id: Number(value),
           is_transfer: false,
         });
       }
+      if (result.propagated && result.propagated > 0) {
+        setToast(
+          `Auto-applied to ${result.propagated} other matching transaction${
+            result.propagated === 1 ? "" : "s"
+          }.`,
+        );
+        setTimeout(() => setToast(null), 4000);
+      }
       await refresh();
     } catch (e) {
       setError((e as Error).message);
+    }
+  }
+
+  async function handleRescan() {
+    setRescanning(true);
+    setError(null);
+    try {
+      const r = await api.rescanTransactions();
+      const parts: string[] = [];
+      if (r.categorized > 0) parts.push(`${r.categorized} auto-categorized`);
+      if (r.transferred > 0) parts.push(`${r.transferred} flagged as transfers`);
+      setToast(
+        parts.length > 0
+          ? `Rescan: ${parts.join(", ")} (of ${r.scanned} unassigned).`
+          : `Rescan: nothing new to auto-apply (${r.scanned} still need a category).`,
+      );
+      setTimeout(() => setToast(null), 5000);
+      await refresh();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setRescanning(false);
     }
   }
 
@@ -90,6 +123,12 @@ export default function Home() {
         </div>
       )}
 
+      {toast && (
+        <div className="rounded-lg bg-accent/10 px-4 py-3 text-sm text-accent">
+          {toast}
+        </div>
+      )}
+
       <div className="card">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
@@ -118,7 +157,17 @@ export default function Home() {
               </span>
             )}
           </div>
-          <Tabs filter={filter} onChange={setFilter} />
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleRescan}
+              disabled={rescanning}
+              className="btn-secondary text-sm"
+              title="Re-run auto-categorization rules against everything uncategorized"
+            >
+              {rescanning ? "Rescanning…" : "Rescan"}
+            </button>
+            <Tabs filter={filter} onChange={setFilter} />
+          </div>
         </div>
       </div>
 

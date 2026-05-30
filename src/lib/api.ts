@@ -160,10 +160,17 @@ export const api = {
       misc_income_id?: number | null;
     },
   ) =>
-    request<{ ok: true }>(`/api/transactions/${id}`, {
+    request<{ ok: true; propagated?: number }>(`/api/transactions/${id}`, {
       method: "PATCH",
       body: JSON.stringify(patch),
     }),
+  rescanTransactions: () =>
+    request<{
+      ok: true;
+      scanned: number;
+      categorized: number;
+      transferred: number;
+    }>(`/api/transactions/rescan`, { method: "POST" }),
   setSplits: (
     id: number,
     splits: { category_id: number; amount_cents: number }[],
