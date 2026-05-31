@@ -77,6 +77,40 @@ export type TransactionsResponse = {
   transactions: Transaction[];
 };
 
+export type CategoryStatus = {
+  id: number;
+  name: string;
+  kind: "expense" | "savings" | "income";
+  budget_cents: number;
+  spent_cents: number;
+  remaining_cents: number;
+  over_cents: number;
+  sort_order: number;
+};
+
+export type MonthDelta = {
+  month: string;
+  savings_contribution_cents: number;
+  overspending_cents: number;
+  delta_cents: number;
+};
+
+export type ScoreboardData = {
+  month: string;
+  budget_total_cents: number;
+  spent_total_cents: number;
+  remaining_total_cents: number;
+  by_category: CategoryStatus[];
+  uncategorized_count: number;
+  savings: {
+    starting_balance_cents: number;
+    starting_as_of_iso: string;
+    current_balance_cents: number;
+    this_month: MonthDelta;
+    prior_month_deltas: MonthDelta[];
+  };
+};
+
 export class ApiError extends Error {
   constructor(public status: number, public payload: unknown) {
     super(`API ${status}: ${JSON.stringify(payload)}`);
@@ -173,6 +207,11 @@ export const api = {
       categorized: number;
       transferred: number;
     }>(`/api/transactions/rescan`, { method: "POST" }),
+
+  getScoreboard: (month?: string) => {
+    const qs = month ? `?month=${month}` : "";
+    return request<ScoreboardData>(`/api/scoreboard${qs}`);
+  },
   setSplits: (
     id: number,
     splits: { category_id: number; amount_cents: number }[],

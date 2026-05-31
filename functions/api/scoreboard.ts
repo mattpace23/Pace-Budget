@@ -1,0 +1,113 @@
+// GET /api/scoreboard?month=YYYY-MM
+// Returns the full scoreboard for the requested month: per-category spending,
+// monthly totals, and a cumulative savings balance computed across all months
+// from the starting-balance date to the requested month.
+
+import { json, badRequest, serverError } from "./../lib/db";
+import {
+  type CategoryRow,
+  type CategoryStatus,
+  type MonthDelta,
+  type ScoreboardData,
+  buildCategoryStatus,
+  computeCategorySpending,
+  computeMonthDelta,
+  enumerateMonths,
+} from "./../lib/scoreboard";
+
+interface Env {
+  DB: D1Database;
+}
+
+export const onRequestGet: PagesFunction<Env> = async (ctx) => {
+  const url = new URL(ctx.request.url);
+  const month = url.searchParams.get("month") || currentMonth();
+  if (!/^\d{4}-\d{2}$/.test(month)) return badRequest("month must be YYYY-MM");
+
+  try {
+    // Load all categories once.
+    const { results: categories } = await ctx.env.DB.prepare(
+      `SELECT id, name, amount, kind, sort_order, archived
+         FROM categories ORDER BY sort_order ASC`,
+    ).all<CategoryRow>();
+
+    // Load settings (savings starting balance + date).
+    const { results: settingRows } = await ctx.env.DB.prepare(
+      `SELECT key, value FROM settings`,
+    ).all<{ key: string; value: string }>();
+    const settings: Record<string, string> = {};
+    for (const s of settingRows) settings[s.key] = s.value;
+    const startingBalanceCents = Number(
+      settings.savings_starting_balance_cents ?? "0",
+    );
+    const startingAsOf = settings.savings_starting_as_of_iso ?? `${month}-01`;
+    const startMonth = startingAsOf.substring(0, 7);
+
+    // Compute the requested month's status.
+    const spentMap = await computeCategorySpending(ctx.env.DB, month, categories);
+    const byCategory = buildCategoryStatus(categories, spentMap);
+    const thisMonthDelta = computeMonthDelta(month, byCategory);
+
+    // Walk all months from start through current to build the cumulative
+    // savings balance. The loop runs once per month — fine for any reasonable
+    // budgeting horizon.
+    const months = enumerateMonths(startMonth, month);
+    const priorDeltas: MonthDelta[] = [];
+    let runningBalance = startingBalanceCents;
+    for (const m of months) {
+      if (m === month) continue; // current month tallied separately below
+      const s = await computeCategorySpending(ctx.env.DB, m, categories);
+      const status = buildCategoryStatus(categories, s);
+      const delta = computeMonthDelta(m, status);
+      priorDeltas.push(delta);
+      runningBalance += delta.delta_cents;
+    }
+    const currentBalance = runningBalance + thisMonthDelta.delta_cents;
+
+    // Aggregate this month's totals (excluding income categories).
+    let budget_total_cents = 0;
+    let spent_total_cents = 0;
+    for (const c of byCategory) {
+      if (c.kind === "income") continue;
+      budget_total_cents += c.budget_cents;
+      spent_total_cents += c.spent_cents;
+    }
+    const remaining_total_cents = budget_total_cents - spent_total_cents;
+
+    // Uncategorized count for the month.
+    const counts = await ctx.env.DB.prepare(
+      `SELECT
+         SUM(CASE WHEN is_transfer = 0 AND category_id IS NULL
+                       AND NOT EXISTS (SELECT 1 FROM transaction_splits s WHERE s.transaction_id = t.id)
+                  THEN 1 ELSE 0 END) AS uncategorized
+       FROM transactions t
+       WHERE posted_at_iso LIKE ?`,
+    )
+      .bind(`${month}%`)
+      .first<{ uncategorized: number }>();
+
+    const out: ScoreboardData = {
+      month,
+      budget_total_cents,
+      spent_total_cents,
+      remaining_total_cents,
+      by_category: byCategory,
+      uncategorized_count: counts?.uncategorized ?? 0,
+      savings: {
+        starting_balance_cents: startingBalanceCents,
+        starting_as_of_iso: startingAsOf,
+        current_balance_cents: currentBalance,
+        this_month: thisMonthDelta,
+        prior_month_deltas: priorDeltas,
+      },
+    };
+    return json(out);
+  } catch (e) {
+    return serverError((e as Error).message);
+  }
+};
+
+function currentMonth(): string {
+  const d = new Date();
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+}

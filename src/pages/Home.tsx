@@ -2,11 +2,13 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   api,
   type Category,
+  type ScoreboardData,
   type Transaction,
   type TransactionsResponse,
 } from "../lib/api";
 import { formatMoney } from "../lib/format";
 import { SplitModal } from "../components/SplitModal";
+import { Scoreboard } from "../components/Scoreboard";
 
 type Filter = "all" | "uncategorized" | "categorized" | "transfer";
 
@@ -14,6 +16,7 @@ export default function Home() {
   const [month, setMonth] = useState<string>(currentMonthIso());
   const [filter, setFilter] = useState<Filter>("uncategorized");
   const [data, setData] = useState<TransactionsResponse | null>(null);
+  const [scoreboard, setScoreboard] = useState<ScoreboardData | null>(null);
   const [categories, setCategories] = useState<Category[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -24,11 +27,13 @@ export default function Home() {
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const [tx, cats] = await Promise.all([
+      const [tx, cats, sb] = await Promise.all([
         api.listTransactions({ month, status: filter }),
         categories ? Promise.resolve({ categories }) : api.listCategories(),
+        api.getScoreboard(month),
       ]);
       setData(tx);
+      setScoreboard(sb);
       if (!categories) setCategories(cats.categories);
     } catch (e) {
       setError((e as Error).message);
@@ -119,6 +124,8 @@ export default function Home() {
           {toast}
         </div>
       )}
+
+      {scoreboard && <Scoreboard data={scoreboard} />}
 
       <div className="card">
         <div className="flex flex-wrap items-center justify-between gap-3">
