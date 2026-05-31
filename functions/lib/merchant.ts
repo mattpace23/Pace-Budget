@@ -76,11 +76,13 @@ export async function categoryIdByName(
 export interface AutoApplyResult {
   is_transfer: 0 | 1;
   category_id: number | null;
-  source: "rule" | "memory" | null;
+  source: "rule" | null;
 }
 
-// Determine what to auto-apply for a row at upload time.
-// Tries hardcoded rules first, then merchant_memory.
+// Determine what to auto-apply for a row. Only hardcoded rules trigger an
+// automatic apply — learned merchant_memory is suggestion-only (looked up
+// separately at view time). This avoids over-eager categorization for broad
+// retailers like Walmart or Sam's Club where the category varies per visit.
 export async function autoApply(
   db: D1Database,
   description: string,
@@ -95,22 +97,30 @@ export async function autoApply(
       if (id) return { is_transfer: 0, category_id: id, source: "rule" };
     }
   }
+  return { is_transfer: 0, category_id: null, source: null };
+}
 
-  // Fall through to merchant_memory.
+export interface Suggestion {
+  category_id: number;
+  category_name: string;
+  hit_count: number;
+}
+
+// Look up the previously-used category for this merchant (from merchant_memory).
+// Returns null if no memory exists, or if memory was for a transfer.
+export async function lookupSuggestion(
+  db: D1Database,
+  description: string,
+): Promise<Suggestion | null> {
   const key = normalizeMerchantKey(description);
-  const mem = await db
+  const row = await db
     .prepare(
-      `SELECT category_id, is_transfer FROM merchant_memory WHERE merchant_key = ?`,
+      `SELECT m.category_id, m.hit_count, c.name AS category_name
+         FROM merchant_memory m
+         JOIN categories c ON c.id = m.category_id
+        WHERE m.merchant_key = ? AND m.is_transfer = 0 AND c.archived = 0`,
     )
     .bind(key)
-    .first<{ category_id: number; is_transfer: number }>();
-  if (mem) {
-    return {
-      is_transfer: mem.is_transfer === 1 ? 1 : 0,
-      category_id: mem.is_transfer === 1 ? null : mem.category_id,
-      source: "memory",
-    };
-  }
-
-  return { is_transfer: 0, category_id: null, source: null };
+    .first<{ category_id: number; category_name: string; hit_count: number }>();
+  return row ?? null;
 }

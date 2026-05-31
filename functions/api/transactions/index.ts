@@ -2,6 +2,7 @@
 // Returns transactions in the requested month with joined category info and splits.
 
 import { json, badRequest, serverError, toInt } from "../../lib/db";
+import { normalizeMerchantKey } from "../../lib/merchant";
 
 interface Env {
   DB: D1Database;
@@ -115,14 +116,60 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
       .bind(`${month}%`)
       .first<{ total: number; uncategorized: number; transfers: number }>();
 
+    // For uncategorized non-transfer transactions, look up a suggestion from
+    // merchant_memory (suggestion-only — the UI shows it but doesn't apply it).
+    // We batch all unique merchant_keys into one IN-list query.
+    const needsSuggestion = txs.filter(
+      (t) => !t.is_transfer && t.category_id === null,
+    );
+    const keyByTxId = new Map<number, string>();
+    const uniqueKeys = new Set<string>();
+    for (const t of needsSuggestion) {
+      const k = normalizeMerchantKey(t.description);
+      keyByTxId.set(t.id, k);
+      uniqueKeys.add(k);
+    }
+
+    const suggestionByKey = new Map<
+      string,
+      { category_id: number; category_name: string }
+    >();
+    if (uniqueKeys.size > 0) {
+      const placeholders = Array.from(uniqueKeys).map(() => "?").join(",");
+      const memSql = `
+        SELECT m.merchant_key, m.category_id, c.name AS category_name
+          FROM merchant_memory m
+          JOIN categories c ON c.id = m.category_id
+         WHERE m.is_transfer = 0
+           AND c.archived = 0
+           AND m.merchant_key IN (${placeholders})
+      `;
+      const { results: mems } = await ctx.env.DB.prepare(memSql)
+        .bind(...Array.from(uniqueKeys))
+        .all<{ merchant_key: string; category_id: number; category_name: string }>();
+      for (const m of mems) {
+        suggestionByKey.set(m.merchant_key, {
+          category_id: m.category_id,
+          category_name: m.category_name,
+        });
+      }
+    }
+
     return json({
       month,
       counts: counts ?? { total: 0, uncategorized: 0, transfers: 0 },
-      transactions: txs.map((t) => ({
-        ...t,
-        is_transfer: t.is_transfer === 1,
-        splits: splitsByTx.get(t.id) ?? [],
-      })),
+      transactions: txs.map((t) => {
+        const suggestion = keyByTxId.has(t.id)
+          ? suggestionByKey.get(keyByTxId.get(t.id)!) ?? null
+          : null;
+        return {
+          ...t,
+          is_transfer: t.is_transfer === 1,
+          splits: splitsByTx.get(t.id) ?? [],
+          suggested_category_id: suggestion?.category_id ?? null,
+          suggested_category_name: suggestion?.category_name ?? null,
+        };
+      }),
     });
   } catch (e) {
     return serverError((e as Error).message);

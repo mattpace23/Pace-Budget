@@ -95,83 +95,42 @@ export const onRequestPatch: PagesFunction<Env> = async (ctx) => {
     const r = await ctx.env.DB.prepare(sql).bind(...bindings).run();
     if (r.meta.changes === 0) return notFound();
 
-    // Learn + propagate when the user assigns a category OR flags as transfer.
-    // We don't propagate clears (category_id = null) or notes-only edits.
-    let propagated = 0;
+    // Record what was tagged in merchant_memory so future transactions for the
+    // same merchant can offer it as a SUGGESTION. We do NOT propagate to other
+    // transactions automatically — broad retailers (Sam's Club, Walmart) have
+    // too much category variance per visit. The user always confirms.
     const settingCategory = "category_id" in body && body.category_id !== null;
     const settingTransfer = body.is_transfer === true;
 
-    if (settingCategory || settingTransfer) {
+    if (settingCategory) {
       const merchant_key = normalizeMerchantKey(tx.description);
-      const category_id = settingTransfer ? null : (toInt(body.category_id) as number);
-      const is_transfer = settingTransfer ? 1 : 0;
-
-      if (settingCategory && category_id !== null) {
-        // Upsert merchant_memory.
-        await ctx.env.DB.prepare(
-          `INSERT INTO merchant_memory (merchant_key, category_id, is_transfer, hit_count, updated_at)
-           VALUES (?, ?, 0, 1, unixepoch())
-           ON CONFLICT(merchant_key) DO UPDATE SET
-             category_id = excluded.category_id,
-             is_transfer = 0,
-             hit_count = merchant_memory.hit_count + 1,
-             updated_at = unixepoch()`,
-        )
-          .bind(merchant_key, category_id)
-          .run();
-      } else if (settingTransfer) {
-        await ctx.env.DB.prepare(
-          `INSERT INTO merchant_memory (merchant_key, category_id, is_transfer, hit_count, updated_at)
-           VALUES (?, NULL, 1, 1, unixepoch())
-           ON CONFLICT(merchant_key) DO UPDATE SET
-             is_transfer = 1,
-             hit_count = merchant_memory.hit_count + 1,
-             updated_at = unixepoch()`,
-        )
-          .bind(merchant_key)
-          .run();
-      }
-
-      // Propagate to OTHER transactions with the same description (not split,
-      // not already categorized or marked as transfer).
-      // We use the raw description match — same merchant_key → same description
-      // pattern is the practical proxy. We compare on the actual description text
-      // since merchant_key is computed on the fly, not stored.
-      //
-      // To match equivalents like "Hurts Donut ... 05-22-" vs "...05-26-", we
-      // need a fuzzy match. The simplest accurate match: pull every uncategorized
-      // tx and filter in JS by normalized key. Volume is small.
-      const { results: candidates } = await ctx.env.DB.prepare(
-        `SELECT t.id, t.description
-           FROM transactions t
-          WHERE t.id != ?
-            AND t.is_transfer = 0
-            AND t.category_id IS NULL
-            AND NOT EXISTS (SELECT 1 FROM transaction_splits s WHERE s.transaction_id = t.id)`,
+      const category_id = toInt(body.category_id) as number;
+      await ctx.env.DB.prepare(
+        `INSERT INTO merchant_memory (merchant_key, category_id, is_transfer, hit_count, updated_at)
+         VALUES (?, ?, 0, 1, unixepoch())
+         ON CONFLICT(merchant_key) DO UPDATE SET
+           category_id = excluded.category_id,
+           is_transfer = 0,
+           hit_count = merchant_memory.hit_count + 1,
+           updated_at = unixepoch()`,
       )
-        .bind(id)
-        .all<{ id: number; description: string }>();
-
-      const matches = candidates.filter(
-        (c) => normalizeMerchantKey(c.description) === merchant_key,
-      );
-
-      if (matches.length > 0) {
-        const statements = matches.map((m) =>
-          settingTransfer
-            ? ctx.env.DB.prepare(
-                `UPDATE transactions SET is_transfer = 1, category_id = NULL WHERE id = ?`,
-              ).bind(m.id)
-            : ctx.env.DB.prepare(
-                `UPDATE transactions SET category_id = ?, is_transfer = 0 WHERE id = ?`,
-              ).bind(category_id, m.id),
-        );
-        await ctx.env.DB.batch(statements);
-        propagated = matches.length;
-      }
+        .bind(merchant_key, category_id)
+        .run();
+    } else if (settingTransfer) {
+      const merchant_key = normalizeMerchantKey(tx.description);
+      await ctx.env.DB.prepare(
+        `INSERT INTO merchant_memory (merchant_key, category_id, is_transfer, hit_count, updated_at)
+         VALUES (?, NULL, 1, 1, unixepoch())
+         ON CONFLICT(merchant_key) DO UPDATE SET
+           is_transfer = 1,
+           hit_count = merchant_memory.hit_count + 1,
+           updated_at = unixepoch()`,
+      )
+        .bind(merchant_key)
+        .run();
     }
 
-    return json({ ok: true, propagated });
+    return json({ ok: true });
   } catch (e) {
     return serverError((e as Error).message);
   }

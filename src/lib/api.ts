@@ -67,6 +67,8 @@ export type Transaction = {
   dedup_ordinal: number;
   created_at: number;
   splits: TransactionSplit[];
+  suggested_category_id: number | null;
+  suggested_category_name: string | null;
 };
 
 export type TransactionsResponse = {
@@ -160,7 +162,7 @@ export const api = {
       misc_income_id?: number | null;
     },
   ) =>
-    request<{ ok: true; propagated?: number }>(`/api/transactions/${id}`, {
+    request<{ ok: true }>(`/api/transactions/${id}`, {
       method: "PATCH",
       body: JSON.stringify(patch),
     }),

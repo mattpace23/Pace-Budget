@@ -44,27 +44,18 @@ export default function Home() {
   async function handleCategoryChange(tx: Transaction, value: string) {
     setError(null);
     try {
-      let result: { ok: true; propagated?: number };
       if (value === "transfer") {
-        result = await api.updateTransaction(tx.id, { is_transfer: true });
+        await api.updateTransaction(tx.id, { is_transfer: true });
       } else if (value === "") {
-        result = await api.updateTransaction(tx.id, {
+        await api.updateTransaction(tx.id, {
           category_id: null,
           is_transfer: false,
         });
       } else {
-        result = await api.updateTransaction(tx.id, {
+        await api.updateTransaction(tx.id, {
           category_id: Number(value),
           is_transfer: false,
         });
-      }
-      if (result.propagated && result.propagated > 0) {
-        setToast(
-          `Auto-applied to ${result.propagated} other matching transaction${
-            result.propagated === 1 ? "" : "s"
-          }.`,
-        );
-        setTimeout(() => setToast(null), 4000);
       }
       await refresh();
     } catch (e) {
@@ -311,30 +302,41 @@ function TransactionItem({
             {formatMoney(Math.abs(tx.amount_cents), { cents: true })}
           </span>
           {!hasSplits && (
-            <select
-              className="input w-full max-w-[180px] sm:w-auto"
-              value={
-                tx.is_transfer
-                  ? "transfer"
-                  : tx.category_id !== null
-                  ? String(tx.category_id)
-                  : ""
-              }
-              onChange={(e) => onCategoryChange(tx, e.target.value)}
-            >
-              <option value="">— uncategorized —</option>
-              <option value="transfer">Transfer (excluded)</option>
-              <optgroup label="Categories">
-                {categories
-                  .filter((c) => !c.archived)
-                  .map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                      {c.kind === "savings" ? " ★" : ""}
-                    </option>
-                  ))}
-              </optgroup>
-            </select>
+            <>
+              {tx.suggested_category_id !== null && tx.category_id === null && !tx.is_transfer && (
+                <button
+                  className="whitespace-nowrap rounded-md bg-accent/10 px-2 py-1 text-xs font-medium text-accent hover:bg-accent/20"
+                  onClick={() => onCategoryChange(tx, String(tx.suggested_category_id))}
+                  title="Apply the category you used last time for this merchant"
+                >
+                  ↳ {tx.suggested_category_name}
+                </button>
+              )}
+              <select
+                className="input w-full max-w-[180px] sm:w-auto"
+                value={
+                  tx.is_transfer
+                    ? "transfer"
+                    : tx.category_id !== null
+                    ? String(tx.category_id)
+                    : ""
+                }
+                onChange={(e) => onCategoryChange(tx, e.target.value)}
+              >
+                <option value="">— uncategorized —</option>
+                <option value="transfer">Transfer (excluded)</option>
+                <optgroup label="Categories">
+                  {categories
+                    .filter((c) => !c.archived)
+                    .map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                        {c.kind === "savings" ? " ★" : ""}
+                      </option>
+                    ))}
+                </optgroup>
+              </select>
+            </>
           )}
           <button
             className="btn-secondary whitespace-nowrap"
