@@ -9,6 +9,7 @@ import {
   type CategoryStatus,
   type MonthDelta,
   type ScoreboardData,
+  appendUncategorizedStatus,
   buildCategoryStatus,
   computeCategorySpending,
   computeMonthDelta,
@@ -43,14 +44,16 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
     const startingAsOf = settings.savings_starting_as_of_iso ?? `${month}-01`;
     const startMonth = startingAsOf.substring(0, 7);
 
-    // Compute the requested month's status.
+    // Compute the requested month's status. The Uncategorized synthetic row is
+    // appended so anything still untagged counts as overspending (eats savings).
     const spentMap = await computeCategorySpending(ctx.env.DB, month, categories);
     const byCategory = buildCategoryStatus(categories, spentMap);
+    await appendUncategorizedStatus(ctx.env.DB, month, byCategory);
     const thisMonthDelta = computeMonthDelta(month, byCategory);
 
     // Walk all months from start through current to build the cumulative
     // savings balance. The loop runs once per month — fine for any reasonable
-    // budgeting horizon.
+    // budgeting horizon. Each month also includes its uncategorized total.
     const months = enumerateMonths(startMonth, month);
     const priorDeltas: MonthDelta[] = [];
     let runningBalance = startingBalanceCents;
@@ -58,6 +61,7 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
       if (m === month) continue; // current month tallied separately below
       const s = await computeCategorySpending(ctx.env.DB, m, categories);
       const status = buildCategoryStatus(categories, s);
+      await appendUncategorizedStatus(ctx.env.DB, m, status);
       const delta = computeMonthDelta(m, status);
       priorDeltas.push(delta);
       runningBalance += delta.delta_cents;

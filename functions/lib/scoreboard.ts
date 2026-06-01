@@ -141,6 +141,45 @@ export function computeMonthDelta(
   };
 }
 
+// Appends a synthetic "Uncategorized" line to the status list, summing every
+// non-transfer transaction this month that has no category and no splits.
+// budget = 0, so the entire amount counts as overspending (kind=expense).
+// This makes the scoreboard honest: untagged transactions can't "hide" from
+// the savings impact calculation.
+//
+// Uses id = -1 as a sentinel since real category IDs are positive.
+export async function appendUncategorizedStatus(
+  db: D1Database,
+  month: string,
+  status: CategoryStatus[],
+): Promise<void> {
+  const row = await db
+    .prepare(
+      `SELECT COALESCE(SUM(amount_cents), 0) AS total, COUNT(*) AS row_count
+         FROM transactions t
+        WHERE posted_at_iso LIKE ?
+          AND is_transfer = 0
+          AND category_id IS NULL
+          AND NOT EXISTS (SELECT 1 FROM transaction_splits s WHERE s.transaction_id = t.id)`,
+    )
+    .bind(`${month}%`)
+    .first<{ total: number; row_count: number }>();
+
+  if (row && row.row_count > 0) {
+    status.push({
+      id: -1,
+      name: "Uncategorized",
+      kind: "expense",
+      budget_cents: 0,
+      spent_cents: row.total,
+      remaining_cents: -row.total,
+      over_cents: Math.max(0, row.total),
+      sort_order: 5, // appear at top of expense section
+    });
+    status.sort((a, b) => a.sort_order - b.sort_order);
+  }
+}
+
 // Enumerate months from startMonth (inclusive) to endMonth (inclusive).
 // Both are YYYY-MM strings.
 export function enumerateMonths(startMonth: string, endMonth: string): string[] {

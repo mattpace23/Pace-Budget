@@ -144,11 +144,24 @@ function CategoryBar({ c, savings = false }: { c: import("../lib/api").CategoryS
     : 0;
   const over = c.over_cents > 0;
   const under = savings && c.spent_cents < c.budget_cents;
+  const isSynthetic = c.id === -1; // the "Uncategorized" line
 
   return (
     <li className="grid items-center gap-3 sm:grid-cols-[10rem_minmax(0,1fr)_14rem]">
       <div className="flex items-baseline gap-2">
-        <span className="text-sm font-medium">{c.name}</span>
+        <span
+          className={`text-sm font-medium ${
+            isSynthetic ? "italic text-warn" : ""
+          }`}
+          title={
+            isSynthetic
+              ? "Sum of every transaction this month still missing a category. Counts as overspending until tagged."
+              : undefined
+          }
+        >
+          {c.name}
+          {isSynthetic && " ⚠"}
+        </span>
         {savings && <span className="text-[10px] text-muted">★ savings</span>}
       </div>
       <div className="relative h-2 w-full overflow-hidden rounded-full bg-ink/10">
