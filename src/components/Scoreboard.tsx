@@ -146,12 +146,12 @@ function CategoryBar({ c, savings = false }: { c: import("../lib/api").CategoryS
   const under = savings && c.spent_cents < c.budget_cents;
 
   return (
-    <li className="grid items-center gap-2 sm:grid-cols-[1.5fr_3fr_auto]">
+    <li className="grid items-center gap-3 sm:grid-cols-[10rem_minmax(0,1fr)_14rem]">
       <div className="flex items-baseline gap-2">
         <span className="text-sm font-medium">{c.name}</span>
         {savings && <span className="text-[10px] text-muted">★ savings</span>}
       </div>
-      <div className="relative h-2 overflow-hidden rounded-full bg-ink/10">
+      <div className="relative h-2 w-full overflow-hidden rounded-full bg-ink/10">
         <div
           className={`h-full ${
             over ? "bg-warn" : savings ? "bg-accent" : "bg-ink"
