@@ -1,8 +1,14 @@
-import { useMemo } from "react";
-import type { ScoreboardData } from "../lib/api";
+import { useMemo, useState } from "react";
+import { api, type MiscIncomeSummary, type ScoreboardData } from "../lib/api";
 import { formatMoney } from "../lib/format";
 
-export function Scoreboard({ data }: { data: ScoreboardData }) {
+export function Scoreboard({
+  data,
+  onChanged,
+}: {
+  data: ScoreboardData;
+  onChanged?: () => void;
+}) {
   const remaining = data.remaining_total_cents;
   const overBudget = remaining < 0;
   const pctSpent = data.budget_total_cents > 0
@@ -109,43 +115,192 @@ export function Scoreboard({ data }: { data: ScoreboardData }) {
 
       {/* Misc Income buckets — extra income earmarked for specific things. */}
       {data.misc_income.length > 0 && (
-        <div className="card">
-          <h3 className="text-sm font-semibold text-muted">Misc Income buckets</h3>
-          <ul className="mt-3 divide-y divide-ink/10">
-            {data.misc_income.map((b) => {
-              const usedPct = b.amount_cents > 0
-                ? Math.min(100, (b.attached_total_cents / b.amount_cents) * 100)
-                : 0;
-              const overdrawn = b.remaining_cents < 0;
-              return (
-                <li key={b.id} className="grid items-center gap-3 py-2 sm:grid-cols-[10rem_minmax(0,1fr)_14rem]">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium">📥 {b.label}</p>
-                    <p className="text-xs text-muted">
-                      {b.occurred_at_iso} · {b.attached_count} attached
-                    </p>
-                  </div>
-                  <div className="relative h-2 w-full overflow-hidden rounded-full bg-ink/10">
-                    <div
-                      className={`h-full ${overdrawn ? "bg-warn" : "bg-accent"}`}
-                      style={{ width: `${overdrawn ? 100 : usedPct}%` }}
-                    />
-                  </div>
-                  <div className="text-right text-xs tabular-nums">
-                    <span className="text-muted">used </span>
-                    {formatMoney(b.attached_total_cents, { cents: true })}
-                    <span className="text-muted"> of {formatMoney(b.amount_cents, { cents: true })}</span>
-                    {" · "}
-                    <span className={overdrawn ? "font-semibold text-warn" : "text-accent"}>
-                      {formatMoney(b.remaining_cents, { cents: true })} left
-                    </span>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
+        <MiscIncomeBucketsSection buckets={data.misc_income} onChanged={onChanged} />
       )}
+    </div>
+  );
+}
+
+function MiscIncomeBucketsSection({
+  buckets,
+  onChanged,
+}: {
+  buckets: MiscIncomeSummary[];
+  onChanged?: () => void;
+}) {
+  const [closing, setClosing] = useState<MiscIncomeSummary | null>(null);
+
+  return (
+    <div className="card">
+      <h3 className="text-sm font-semibold text-muted">Misc Income buckets</h3>
+      <ul className="mt-3 divide-y divide-ink/10">
+        {buckets.map((b) => {
+          const usedPct = b.amount_cents > 0
+            ? Math.min(100, (b.attached_total_cents / b.amount_cents) * 100)
+            : 0;
+          const overdrawn = b.remaining_cents < 0;
+          return (
+            <li key={b.id} className="grid items-center gap-3 py-2 sm:grid-cols-[10rem_minmax(0,1fr)_14rem_auto]">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium">📥 {b.label}</p>
+                <p className="text-xs text-muted">
+                  {b.occurred_at_iso} · {b.attached_count} attached
+                </p>
+              </div>
+              <div className="relative h-2 w-full overflow-hidden rounded-full bg-ink/10">
+                <div
+                  className={`h-full ${overdrawn ? "bg-warn" : "bg-accent"}`}
+                  style={{ width: `${overdrawn ? 100 : usedPct}%` }}
+                />
+              </div>
+              <div className="text-right text-xs tabular-nums">
+                <span className="text-muted">used </span>
+                {formatMoney(b.attached_total_cents, { cents: true })}
+                <span className="text-muted"> of {formatMoney(b.amount_cents, { cents: true })}</span>
+                {" · "}
+                <span className={overdrawn ? "font-semibold text-warn" : "text-accent"}>
+                  {formatMoney(b.remaining_cents, { cents: true })} left
+                </span>
+              </div>
+              <button
+                className="btn-secondary text-xs"
+                onClick={() => setClosing(b)}
+                title="Close this bucket"
+              >
+                Close
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+      {closing && (
+        <CloseBucketModal
+          bucket={closing}
+          onClose={() => setClosing(null)}
+          onClosed={() => {
+            setClosing(null);
+            onChanged?.();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function CloseBucketModal({
+  bucket,
+  onClose,
+  onClosed,
+}: {
+  bucket: MiscIncomeSummary;
+  onClose: () => void;
+  onClosed: () => void;
+}) {
+  const [disposition, setDisposition] = useState<"savings" | "discard">("savings");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const remaining = bucket.remaining_cents;
+  const overdrawn = remaining < 0;
+  const positive = remaining > 0;
+
+  async function confirm() {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.closeMiscIncome(bucket.id, positive ? disposition : "discard");
+      onClosed();
+    } catch (e) {
+      setError((e as Error).message);
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-ink/50 p-0 sm:items-center sm:p-4"
+      onClick={onClose}
+    >
+      <div
+        className="card w-full max-w-md space-y-4 rounded-t-2xl sm:rounded-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div>
+          <h3 className="text-lg font-semibold">Close bucket: {bucket.label}</h3>
+          <p className="mt-1 text-sm text-muted">
+            Bucket of {formatMoney(bucket.amount_cents, { cents: true })}; used{" "}
+            {formatMoney(bucket.attached_total_cents, { cents: true })} ·{" "}
+            <span className={overdrawn ? "text-warn" : "text-accent"}>
+              {formatMoney(remaining, { cents: true })} remaining
+            </span>
+          </p>
+        </div>
+
+        {overdrawn && (
+          <div className="rounded-lg bg-warn/10 px-3 py-2 text-sm text-warn">
+            This bucket is overdrawn by {formatMoney(-remaining, { cents: true })}.
+            Find the attached transaction that should be split, split it so the
+            overage goes to a real category, then close again.
+          </div>
+        )}
+
+        {positive && !overdrawn && (
+          <div className="space-y-2">
+            <p className="text-sm">What should happen to the {formatMoney(remaining, { cents: true })} remaining?</p>
+            <label className="flex items-start gap-2 rounded-lg border border-ink/15 p-3 cursor-pointer hover:bg-ink/5">
+              <input
+                type="radio"
+                name="disposition"
+                value="savings"
+                checked={disposition === "savings"}
+                onChange={() => setDisposition("savings")}
+                className="mt-1"
+              />
+              <div>
+                <p className="text-sm font-medium">Transfer to savings</p>
+                <p className="text-xs text-muted">
+                  Counts as a {formatMoney(remaining, { cents: true })} savings contribution this month.
+                </p>
+              </div>
+            </label>
+            <label className="flex items-start gap-2 rounded-lg border border-ink/15 p-3 cursor-pointer hover:bg-ink/5">
+              <input
+                type="radio"
+                name="disposition"
+                value="discard"
+                checked={disposition === "discard"}
+                onChange={() => setDisposition("discard")}
+                className="mt-1"
+              />
+              <div>
+                <p className="text-sm font-medium">Discard (no impact)</p>
+                <p className="text-xs text-muted">
+                  Just close it. The leftover money stays in your account but isn't tracked anywhere.
+                </p>
+              </div>
+            </label>
+          </div>
+        )}
+
+        {!overdrawn && remaining === 0 && (
+          <p className="text-sm text-muted">
+            This bucket is fully spent. Closing it just removes it from the active list.
+          </p>
+        )}
+
+        {error && <p className="text-sm text-warn">{error}</p>}
+
+        <div className="flex justify-end gap-2">
+          <button className="btn-secondary" onClick={onClose} disabled={busy}>
+            Cancel
+          </button>
+          {!overdrawn && (
+            <button className="btn-primary" onClick={confirm} disabled={busy}>
+              {busy ? "Closing…" : "Close bucket"}
+            </button>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

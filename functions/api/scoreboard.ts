@@ -6,7 +6,6 @@
 import { json, badRequest, serverError } from "./../lib/db";
 import {
   type CategoryRow,
-  type CategoryStatus,
   type MonthDelta,
   type ScoreboardData,
   appendUncategorizedStatus,
@@ -44,34 +43,51 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
     const startingAsOf = settings.savings_starting_as_of_iso ?? `${month}-01`;
     const startMonth = startingAsOf.substring(0, 7);
 
+    // Closed-bucket savings transfers grouped by close month. We query these
+    // before the delta loop so we can fold them into each month's savings
+    // contribution.
+    const { results: bucketCloseRows } = await ctx.env.DB.prepare(
+      `SELECT
+         strftime('%Y-%m', datetime(closed_at, 'unixepoch')) AS month,
+         COALESCE(SUM(savings_transfer_cents), 0) AS total_cents
+         FROM misc_income
+        WHERE closed_at IS NOT NULL
+          AND closed_disposition = 'savings'
+          AND savings_transfer_cents > 0
+        GROUP BY month`,
+    ).all<{ month: string; total_cents: number }>();
+    const bucketTransfersByMonth = new Map<string, number>();
+    for (const r of bucketCloseRows) {
+      bucketTransfersByMonth.set(r.month, r.total_cents);
+    }
+
     // Compute the requested month's status. The Uncategorized synthetic row is
-    // appended so anything still untagged counts as overspending (eats savings).
+    // appended for visibility but is informational only (doesn't affect math).
     const spentMap = await computeCategorySpending(ctx.env.DB, month, categories);
     const byCategory = buildCategoryStatus(categories, spentMap);
     await appendUncategorizedStatus(ctx.env.DB, month, byCategory);
     const thisMonthDelta = computeMonthDelta(month, byCategory);
+    applyBucketTransfer(thisMonthDelta, bucketTransfersByMonth.get(month) ?? 0);
 
     // Walk all months from start through current to build the cumulative
-    // savings balance. The loop runs once per month — fine for any reasonable
-    // budgeting horizon. Each month also includes its uncategorized total.
+    // savings balance. Each month's delta also includes any closed-bucket
+    // savings transfer that happened in that month.
     const months = enumerateMonths(startMonth, month);
     const priorDeltas: MonthDelta[] = [];
     let runningBalance = startingBalanceCents;
     for (const m of months) {
-      if (m === month) continue; // current month tallied separately below
+      if (m === month) continue;
       const s = await computeCategorySpending(ctx.env.DB, m, categories);
       const status = buildCategoryStatus(categories, s);
       await appendUncategorizedStatus(ctx.env.DB, m, status);
       const delta = computeMonthDelta(m, status);
+      applyBucketTransfer(delta, bucketTransfersByMonth.get(m) ?? 0);
       priorDeltas.push(delta);
       runningBalance += delta.delta_cents;
     }
     const currentBalance = runningBalance + thisMonthDelta.delta_cents;
 
     // Aggregate this month's totals across real budget categories only.
-    // Income categories are excluded (income is tracked via cash flow below).
-    // The synthetic Uncategorized line (id = -1) is also excluded — it's a
-    // visibility nag, not budgeted spending.
     let budget_total_cents = 0;
     let spent_total_cents = 0;
     for (const c of byCategory) {
@@ -82,9 +98,7 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
     }
     const remaining_total_cents = budget_total_cents - spent_total_cents;
 
-    // Cash flow: raw debits vs credits for the month, regardless of category
-    // or transfer status. Gives a "money in vs money out" check independent
-    // of the budget math.
+    // Cash flow: raw debits vs credits for the month.
     const cashFlowRow = await ctx.env.DB.prepare(
       `SELECT
          COALESCE(SUM(CASE WHEN amount_cents < 0 THEN -amount_cents ELSE 0 END), 0) AS income,
@@ -97,7 +111,7 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
     const total_income_cents = cashFlowRow?.income ?? 0;
     const total_expenses_cents = cashFlowRow?.expenses ?? 0;
 
-    // Misc-income buckets — list all (small table; show on scoreboard for visibility).
+    // Active misc-income buckets — only un-closed ones surface on the scoreboard.
     const { results: bucketRows } = await ctx.env.DB.prepare(
       `SELECT
          m.id, m.label, m.amount_cents, m.occurred_at_iso,
@@ -111,6 +125,7 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
              END), 0) AS attached_total_cents
          FROM misc_income m
          LEFT JOIN transactions t ON t.misc_income_id = m.id
+         WHERE m.closed_at IS NULL
          GROUP BY m.id
          ORDER BY m.occurred_at_iso DESC, m.id DESC`,
     ).all<{
@@ -129,7 +144,7 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
     // Uncategorized count for the month.
     const counts = await ctx.env.DB.prepare(
       `SELECT
-         SUM(CASE WHEN is_transfer = 0 AND category_id IS NULL
+         SUM(CASE WHEN is_transfer = 0 AND category_id IS NULL AND misc_income_id IS NULL
                        AND NOT EXISTS (SELECT 1 FROM transaction_splits s WHERE s.transaction_id = t.id)
                   THEN 1 ELSE 0 END) AS uncategorized
        FROM transactions t
@@ -161,6 +176,12 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
     return serverError((e as Error).message);
   }
 };
+
+function applyBucketTransfer(delta: MonthDelta, transferCents: number): void {
+  if (transferCents <= 0) return;
+  delta.savings_contribution_cents += transferCents;
+  delta.delta_cents = delta.savings_contribution_cents - delta.overspending_cents;
+}
 
 function currentMonth(): string {
   const d = new Date();

@@ -21,11 +21,16 @@ interface MiscIncomeSummaryRow {
 
 export const onRequestGet: PagesFunction<Env> = async (ctx) => {
   try {
+    const url = new URL(ctx.request.url);
+    const includeClosed = url.searchParams.get("includeClosed") === "1";
+
     // Each bucket + sum of attached debits (positive) and credits (negative).
     // Attached transactions exclude the bucket's own source_tx_id.
+    // By default we only return active (un-closed) buckets.
     const sql = `
       SELECT
         m.id, m.label, m.amount_cents, m.occurred_at_iso, m.source_tx_id, m.notes, m.created_at,
+        m.closed_at, m.closed_disposition, m.savings_transfer_cents,
         COALESCE(SUM(CASE
               WHEN t.id IS NOT NULL AND t.id != IFNULL(m.source_tx_id, -1)
               THEN 1 ELSE 0
@@ -36,6 +41,7 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
             END), 0) AS attached_total_cents
       FROM misc_income m
       LEFT JOIN transactions t ON t.misc_income_id = m.id
+      ${includeClosed ? "" : "WHERE m.closed_at IS NULL"}
       GROUP BY m.id
       ORDER BY m.occurred_at_iso DESC, m.id DESC
     `;

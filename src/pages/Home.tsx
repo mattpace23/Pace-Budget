@@ -127,7 +127,7 @@ export default function Home() {
         </div>
       )}
 
-      {scoreboard && <Scoreboard data={scoreboard} />}
+      {scoreboard && <Scoreboard data={scoreboard} onChanged={refresh} />}
 
       <div className="card">
         <div className="flex flex-wrap items-center justify-between gap-3">

@@ -269,4 +269,15 @@ export const api = {
     }),
   deleteMiscIncome: (id: number) =>
     request<{ ok: true }>(`/api/misc-income/${id}`, { method: "DELETE" }),
+  closeMiscIncome: (id: number, disposition: "savings" | "discard") =>
+    request<{
+      ok: true;
+      closed: true;
+      disposition: "savings" | "discard";
+      remaining_cents: number;
+      savings_transfer_cents: number;
+    }>(`/api/misc-income/${id}/close`, {
+      method: "POST",
+      body: JSON.stringify({ disposition }),
+    }),
 };
