@@ -68,15 +68,34 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
     }
     const currentBalance = runningBalance + thisMonthDelta.delta_cents;
 
-    // Aggregate this month's totals (excluding income categories).
+    // Aggregate this month's totals across real budget categories only.
+    // Income categories are excluded (income is tracked via cash flow below).
+    // The synthetic Uncategorized line (id = -1) is also excluded — it's a
+    // visibility nag, not budgeted spending.
     let budget_total_cents = 0;
     let spent_total_cents = 0;
     for (const c of byCategory) {
+      if (c.id === -1) continue;
       if (c.kind === "income") continue;
       budget_total_cents += c.budget_cents;
       spent_total_cents += c.spent_cents;
     }
     const remaining_total_cents = budget_total_cents - spent_total_cents;
+
+    // Cash flow: raw debits vs credits for the month, regardless of category
+    // or transfer status. Gives a "money in vs money out" check independent
+    // of the budget math.
+    const cashFlowRow = await ctx.env.DB.prepare(
+      `SELECT
+         COALESCE(SUM(CASE WHEN amount_cents < 0 THEN -amount_cents ELSE 0 END), 0) AS income,
+         COALESCE(SUM(CASE WHEN amount_cents > 0 THEN amount_cents  ELSE 0 END), 0) AS expenses
+         FROM transactions
+        WHERE posted_at_iso LIKE ?`,
+    )
+      .bind(`${month}%`)
+      .first<{ income: number; expenses: number }>();
+    const total_income_cents = cashFlowRow?.income ?? 0;
+    const total_expenses_cents = cashFlowRow?.expenses ?? 0;
 
     // Uncategorized count for the month.
     const counts = await ctx.env.DB.prepare(
@@ -95,6 +114,8 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
       budget_total_cents,
       spent_total_cents,
       remaining_total_cents,
+      total_income_cents,
+      total_expenses_cents,
       by_category: byCategory,
       uncategorized_count: counts?.uncategorized ?? 0,
       savings: {

@@ -22,10 +22,13 @@ export function Scoreboard({ data }: { data: ScoreboardData }) {
     [data.by_category],
   );
 
+  const netCashFlow = data.total_income_cents - data.total_expenses_cents;
+  const isCashPositive = netCashFlow >= 0;
+
   return (
     <div className="space-y-4">
-      {/* Top row: the three big numbers */}
-      <div className="grid gap-3 sm:grid-cols-3">
+      {/* Top row: four cards. 2-col on tablet, 4-col on desktop. */}
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <ScoreCard
           label="Spent vs budget this month"
           value={formatMoney(data.spent_total_cents)}
@@ -58,6 +61,17 @@ export function Scoreboard({ data }: { data: ScoreboardData }) {
               </span>
             </>
           }
+        />
+        <ScoreCard
+          label="Cash flow this month"
+          value={`${isCashPositive ? "+" : ""}${formatMoney(netCashFlow)}`}
+          sublabel={
+            <>
+              <span className="text-accent">+{formatMoney(data.total_income_cents)} in</span>{" "}
+              · <span className="text-warn">−{formatMoney(data.total_expenses_cents)} out</span>
+            </>
+          }
+          accentWhen={isCashPositive ? "accent" : "warn"}
         />
         <ScoreCard
           label="To categorize"

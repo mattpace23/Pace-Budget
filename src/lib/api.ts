@@ -100,6 +100,8 @@ export type ScoreboardData = {
   budget_total_cents: number;
   spent_total_cents: number;
   remaining_total_cents: number;
+  total_income_cents: number;
+  total_expenses_cents: number;
   by_category: CategoryStatus[];
   uncategorized_count: number;
   savings: {

@@ -37,8 +37,10 @@ export interface MonthDelta {
 export interface ScoreboardData {
   month: string;
   budget_total_cents: number; // sum of expense + savings categories
-  spent_total_cents: number; // sum of all expense+savings category spending
+  spent_total_cents: number; // sum of all expense+savings category spending (excludes synthetic Uncategorized)
   remaining_total_cents: number;
+  total_income_cents: number; // raw inflow this month (sum of all credits)
+  total_expenses_cents: number; // raw outflow this month (sum of all debits)
   by_category: CategoryStatus[];
   uncategorized_count: number;
   savings: {
@@ -123,6 +125,9 @@ export function buildCategoryStatus(
 }
 
 // Compute the savings delta for a single month.
+// The synthetic Uncategorized line (id = -1) is informational only and excluded
+// from both contribution and overspending totals — it doesn't represent real
+// budget data, just a nag to categorize.
 export function computeMonthDelta(
   month: string,
   byCategory: CategoryStatus[],
@@ -130,6 +135,7 @@ export function computeMonthDelta(
   let savings_contribution_cents = 0;
   let overspending_cents = 0;
   for (const c of byCategory) {
+    if (c.id === -1) continue; // synthetic Uncategorized — informational only
     if (c.kind === "savings") savings_contribution_cents += c.spent_cents;
     if (c.kind === "expense") overspending_cents += c.over_cents;
   }
