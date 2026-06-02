@@ -34,6 +34,16 @@ export interface MonthDelta {
   delta_cents: number; // contribution - overspending
 }
 
+export interface MiscIncomeSummary {
+  id: number;
+  label: string;
+  amount_cents: number;
+  occurred_at_iso: string;
+  attached_count: number;
+  attached_total_cents: number;
+  remaining_cents: number;
+}
+
 export interface ScoreboardData {
   month: string;
   budget_total_cents: number; // sum of expense + savings categories
@@ -43,6 +53,7 @@ export interface ScoreboardData {
   total_expenses_cents: number; // raw outflow this month (sum of all debits)
   by_category: CategoryStatus[];
   uncategorized_count: number;
+  misc_income: MiscIncomeSummary[];
   savings: {
     starting_balance_cents: number;
     starting_as_of_iso: string;
@@ -61,6 +72,8 @@ export async function computeCategorySpending(
   const spent = new Map<number, number>();
 
   // 1) Direct category assignments (transactions without splits).
+  // Exclude transactions attached to a misc-income bucket — those are absorbed
+  // by the bucket and don't count against the regular budget.
   const { results: direct } = await db
     .prepare(
       `SELECT t.category_id, SUM(t.amount_cents) AS total
@@ -68,6 +81,7 @@ export async function computeCategorySpending(
         WHERE t.posted_at_iso LIKE ?
           AND t.is_transfer = 0
           AND t.category_id IS NOT NULL
+          AND t.misc_income_id IS NULL
           AND NOT EXISTS (SELECT 1 FROM transaction_splits s WHERE s.transaction_id = t.id)
         GROUP BY t.category_id`,
     )
@@ -83,6 +97,7 @@ export async function computeCategorySpending(
          JOIN transactions t ON t.id = s.transaction_id
         WHERE t.posted_at_iso LIKE ?
           AND t.is_transfer = 0
+          AND t.misc_income_id IS NULL
         GROUP BY s.category_id`,
     )
     .bind(`${month}%`)
@@ -166,6 +181,7 @@ export async function appendUncategorizedStatus(
         WHERE posted_at_iso LIKE ?
           AND is_transfer = 0
           AND category_id IS NULL
+          AND misc_income_id IS NULL
           AND NOT EXISTS (SELECT 1 FROM transaction_splits s WHERE s.transaction_id = t.id)`,
     )
     .bind(`${month}%`)

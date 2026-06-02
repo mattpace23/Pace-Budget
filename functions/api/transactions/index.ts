@@ -20,6 +20,7 @@ interface TxRow {
   category_id: number | null;
   category_name: string | null;
   misc_income_id: number | null;
+  misc_income_label: string | null;
   notes: string | null;
   dedup_ordinal: number;
   created_at: number;
@@ -52,13 +53,13 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
   }
 
   if (status === "uncategorized") {
-    // Uncategorized = not a transfer, no category, no splits.
+    // Uncategorized = not a transfer, no category, no splits, not attached to misc income.
     filters.push(
-      `t.is_transfer = 0 AND t.category_id IS NULL AND NOT EXISTS (SELECT 1 FROM transaction_splits s WHERE s.transaction_id = t.id)`,
+      `t.is_transfer = 0 AND t.category_id IS NULL AND t.misc_income_id IS NULL AND NOT EXISTS (SELECT 1 FROM transaction_splits s WHERE s.transaction_id = t.id)`,
     );
   } else if (status === "categorized") {
     filters.push(
-      `(t.category_id IS NOT NULL OR EXISTS (SELECT 1 FROM transaction_splits s WHERE s.transaction_id = t.id))`,
+      `(t.category_id IS NOT NULL OR t.misc_income_id IS NOT NULL OR EXISTS (SELECT 1 FROM transaction_splits s WHERE s.transaction_id = t.id))`,
     );
   } else if (status === "transfer") {
     filters.push(`t.is_transfer = 1`);
@@ -69,10 +70,12 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
       t.id, t.account_id, a.name AS account_name,
       t.posted_at_iso, t.description, t.amount_cents, t.raw_classification,
       t.is_transfer, t.category_id, c.name AS category_name,
-      t.misc_income_id, t.notes, t.dedup_ordinal, t.created_at
+      t.misc_income_id, mi.label AS misc_income_label,
+      t.notes, t.dedup_ordinal, t.created_at
     FROM transactions t
     JOIN accounts a ON a.id = t.account_id
     LEFT JOIN categories c ON c.id = t.category_id
+    LEFT JOIN misc_income mi ON mi.id = t.misc_income_id
     WHERE ${filters.join(" AND ")}
     ORDER BY t.posted_at_iso DESC, t.id DESC
   `;
@@ -106,7 +109,7 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
     const counts = await ctx.env.DB.prepare(
       `SELECT
          COUNT(*) AS total,
-         SUM(CASE WHEN is_transfer = 0 AND category_id IS NULL
+         SUM(CASE WHEN is_transfer = 0 AND category_id IS NULL AND misc_income_id IS NULL
                        AND NOT EXISTS (SELECT 1 FROM transaction_splits s WHERE s.transaction_id = t.id)
                   THEN 1 ELSE 0 END) AS uncategorized,
          SUM(CASE WHEN is_transfer = 1 THEN 1 ELSE 0 END) AS transfers

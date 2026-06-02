@@ -9,6 +9,7 @@ import {
 import { formatMoney } from "../lib/format";
 import { SplitModal } from "../components/SplitModal";
 import { Scoreboard } from "../components/Scoreboard";
+import { MiscIncomeModal } from "../components/MiscIncomeModal";
 
 type Filter = "all" | "uncategorized" | "categorized" | "transfer";
 
@@ -21,6 +22,7 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [splittingTx, setSplittingTx] = useState<Transaction | null>(null);
+  const [miscIncomeTx, setMiscIncomeTx] = useState<Transaction | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [rescanning, setRescanning] = useState(false);
 
@@ -186,6 +188,7 @@ export default function Home() {
                 onCategoryChange={handleCategoryChange}
                 onOpenSplit={() => setSplittingTx(tx)}
                 onClearSplits={handleClearSplits}
+                onOpenMiscIncome={() => setMiscIncomeTx(tx)}
               />
             ))}
           </ul>
@@ -198,6 +201,14 @@ export default function Home() {
           categories={categories}
           onClose={() => setSplittingTx(null)}
           onSave={(splits) => handleSaveSplit(splittingTx, splits)}
+        />
+      )}
+
+      {miscIncomeTx && (
+        <MiscIncomeModal
+          transaction={miscIncomeTx}
+          onClose={() => setMiscIncomeTx(null)}
+          onChanged={() => refresh()}
         />
       )}
     </div>
@@ -243,16 +254,19 @@ function TransactionItem({
   onCategoryChange,
   onOpenSplit,
   onClearSplits,
+  onOpenMiscIncome,
 }: {
   tx: Transaction;
   categories: Category[];
   onCategoryChange: (tx: Transaction, value: string) => void;
   onOpenSplit: () => void;
   onClearSplits: (tx: Transaction) => void;
+  onOpenMiscIncome: () => void;
 }) {
   const isCredit = tx.amount_cents < 0;
   const hasSplits = tx.splits.length > 0;
-  const isCategorized = hasSplits || tx.category_id !== null || tx.is_transfer;
+  const hasMiscIncome = tx.misc_income_id !== null;
+  const isCategorized = hasSplits || tx.category_id !== null || tx.is_transfer || hasMiscIncome;
 
   // The visual treatment per the spec:
   //  - uncategorized → highlighted
@@ -297,6 +311,13 @@ function TransactionItem({
               </button>
             </div>
           )}
+          {hasMiscIncome && (
+            <div className="mt-1 flex items-center gap-1 text-xs">
+              <span className="rounded-md bg-accent/10 px-2 py-0.5 text-accent">
+                📥 {tx.misc_income_label}
+              </span>
+            </div>
+          )}
         </div>
 
         <div className="flex flex-wrap items-center justify-end gap-2 sm:flex-nowrap">
@@ -308,7 +329,7 @@ function TransactionItem({
             {isCredit ? "+" : ""}
             {formatMoney(Math.abs(tx.amount_cents), { cents: true })}
           </span>
-          {!hasSplits && (
+          {!hasSplits && !hasMiscIncome && (
             <>
               {tx.suggested_category_id !== null && tx.category_id === null && !tx.is_transfer && (
                 <button
@@ -344,6 +365,15 @@ function TransactionItem({
                 </optgroup>
               </select>
             </>
+          )}
+          {!hasSplits && (
+            <button
+              className="btn-secondary whitespace-nowrap"
+              onClick={onOpenMiscIncome}
+              title="Mark as misc income or attach to a misc income bucket"
+            >
+              {hasMiscIncome ? "📥 Edit" : "📥"}
+            </button>
           )}
           <button
             className="btn-secondary whitespace-nowrap"

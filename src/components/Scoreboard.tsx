@@ -106,6 +106,46 @@ export function Scoreboard({ data }: { data: ScoreboardData }) {
           )}
         </ul>
       </div>
+
+      {/* Misc Income buckets — extra income earmarked for specific things. */}
+      {data.misc_income.length > 0 && (
+        <div className="card">
+          <h3 className="text-sm font-semibold text-muted">Misc Income buckets</h3>
+          <ul className="mt-3 divide-y divide-ink/10">
+            {data.misc_income.map((b) => {
+              const usedPct = b.amount_cents > 0
+                ? Math.min(100, (b.attached_total_cents / b.amount_cents) * 100)
+                : 0;
+              const overdrawn = b.remaining_cents < 0;
+              return (
+                <li key={b.id} className="grid items-center gap-3 py-2 sm:grid-cols-[10rem_minmax(0,1fr)_14rem]">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">📥 {b.label}</p>
+                    <p className="text-xs text-muted">
+                      {b.occurred_at_iso} · {b.attached_count} attached
+                    </p>
+                  </div>
+                  <div className="relative h-2 w-full overflow-hidden rounded-full bg-ink/10">
+                    <div
+                      className={`h-full ${overdrawn ? "bg-warn" : "bg-accent"}`}
+                      style={{ width: `${overdrawn ? 100 : usedPct}%` }}
+                    />
+                  </div>
+                  <div className="text-right text-xs tabular-nums">
+                    <span className="text-muted">used </span>
+                    {formatMoney(b.attached_total_cents, { cents: true })}
+                    <span className="text-muted"> of {formatMoney(b.amount_cents, { cents: true })}</span>
+                    {" · "}
+                    <span className={overdrawn ? "font-semibold text-warn" : "text-accent"}>
+                      {formatMoney(b.remaining_cents, { cents: true })} left
+                    </span>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }

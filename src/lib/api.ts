@@ -63,12 +63,26 @@ export type Transaction = {
   category_id: number | null;
   category_name: string | null;
   misc_income_id: number | null;
+  misc_income_label: string | null;
   notes: string | null;
   dedup_ordinal: number;
   created_at: number;
   splits: TransactionSplit[];
   suggested_category_id: number | null;
   suggested_category_name: string | null;
+};
+
+export type MiscIncomeBucket = {
+  id: number;
+  label: string;
+  amount_cents: number;
+  occurred_at_iso: string;
+  source_tx_id: number | null;
+  notes: string | null;
+  created_at: number;
+  attached_count: number;
+  attached_total_cents: number;
+  remaining_cents: number;
 };
 
 export type TransactionsResponse = {
@@ -95,6 +109,16 @@ export type MonthDelta = {
   delta_cents: number;
 };
 
+export type MiscIncomeSummary = {
+  id: number;
+  label: string;
+  amount_cents: number;
+  occurred_at_iso: string;
+  attached_count: number;
+  attached_total_cents: number;
+  remaining_cents: number;
+};
+
 export type ScoreboardData = {
   month: string;
   budget_total_cents: number;
@@ -104,6 +128,7 @@ export type ScoreboardData = {
   total_expenses_cents: number;
   by_category: CategoryStatus[];
   uncategorized_count: number;
+  misc_income: MiscIncomeSummary[];
   savings: {
     starting_balance_cents: number;
     starting_as_of_iso: string;
@@ -226,4 +251,22 @@ export const api = {
     request<{ ok: true }>(`/api/transactions/${id}/splits`, {
       method: "DELETE",
     }),
+
+  listMiscIncome: () =>
+    request<{ misc_income: MiscIncomeBucket[] }>(`/api/misc-income`),
+  createMiscIncome: (input: { transaction_id: number; label: string; notes?: string }) =>
+    request<{ misc_income: MiscIncomeBucket }>(`/api/misc-income`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  updateMiscIncome: (
+    id: number,
+    patch: { label?: string; amount?: number; notes?: string | null },
+  ) =>
+    request<{ ok: true }>(`/api/misc-income/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }),
+  deleteMiscIncome: (id: number) =>
+    request<{ ok: true }>(`/api/misc-income/${id}`, { method: "DELETE" }),
 };

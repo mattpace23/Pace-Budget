@@ -38,15 +38,18 @@ export const onRequestPatch: PagesFunction<Env> = async (ctx) => {
       if (!c) return badRequest("unknown or archived category_id");
       updates.push("category_id = ?");
       bindings.push(cid);
+      // Picking a regular category detaches from any misc-income bucket.
+      updates.push("misc_income_id = NULL");
     }
   }
 
   if ("is_transfer" in body) {
     updates.push("is_transfer = ?");
     bindings.push(body.is_transfer ? 1 : 0);
-    // Marking as transfer also clears category (a transfer has no spending category).
+    // Marking as transfer also clears category and any misc-income attachment.
     if (body.is_transfer) {
       updates.push("category_id = NULL");
+      updates.push("misc_income_id = NULL");
     }
   }
 
@@ -75,6 +78,9 @@ export const onRequestPatch: PagesFunction<Env> = async (ctx) => {
       if (!m) return badRequest("unknown misc_income_id");
       updates.push("misc_income_id = ?");
       bindings.push(mid);
+      // Attaching to a misc-income bucket detaches from any category / transfer flag.
+      updates.push("category_id = NULL");
+      updates.push("is_transfer = 0");
     }
   }
 

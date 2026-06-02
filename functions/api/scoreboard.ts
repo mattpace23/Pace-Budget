@@ -97,6 +97,35 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
     const total_income_cents = cashFlowRow?.income ?? 0;
     const total_expenses_cents = cashFlowRow?.expenses ?? 0;
 
+    // Misc-income buckets — list all (small table; show on scoreboard for visibility).
+    const { results: bucketRows } = await ctx.env.DB.prepare(
+      `SELECT
+         m.id, m.label, m.amount_cents, m.occurred_at_iso,
+         COALESCE(SUM(CASE
+               WHEN t.id IS NOT NULL AND t.id != IFNULL(m.source_tx_id, -1)
+               THEN 1 ELSE 0
+             END), 0) AS attached_count,
+         COALESCE(SUM(CASE
+               WHEN t.id IS NOT NULL AND t.id != IFNULL(m.source_tx_id, -1)
+               THEN t.amount_cents ELSE 0
+             END), 0) AS attached_total_cents
+         FROM misc_income m
+         LEFT JOIN transactions t ON t.misc_income_id = m.id
+         GROUP BY m.id
+         ORDER BY m.occurred_at_iso DESC, m.id DESC`,
+    ).all<{
+      id: number;
+      label: string;
+      amount_cents: number;
+      occurred_at_iso: string;
+      attached_count: number;
+      attached_total_cents: number;
+    }>();
+    const miscIncome = bucketRows.map((b) => ({
+      ...b,
+      remaining_cents: b.amount_cents - b.attached_total_cents,
+    }));
+
     // Uncategorized count for the month.
     const counts = await ctx.env.DB.prepare(
       `SELECT
@@ -118,6 +147,7 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
       total_expenses_cents,
       by_category: byCategory,
       uncategorized_count: counts?.uncategorized ?? 0,
+      misc_income: miscIncome,
       savings: {
         starting_balance_cents: startingBalanceCents,
         starting_as_of_iso: startingAsOf,
