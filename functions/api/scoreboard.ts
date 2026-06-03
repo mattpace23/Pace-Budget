@@ -98,13 +98,18 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
     }
     const remaining_total_cents = budget_total_cents - spent_total_cents;
 
-    // Cash flow: raw debits vs credits for the month.
+    // Cash flow: real money in vs real money out for the month. Excludes
+    // transactions flagged as transfers — those are internal moves between the
+    // user's own accounts (e.g. paying the Chase card from checking shows up
+    // as a debit in checking AND a credit on the card; counting both would
+    // double the totals).
     const cashFlowRow = await ctx.env.DB.prepare(
       `SELECT
          COALESCE(SUM(CASE WHEN amount_cents < 0 THEN -amount_cents ELSE 0 END), 0) AS income,
          COALESCE(SUM(CASE WHEN amount_cents > 0 THEN amount_cents  ELSE 0 END), 0) AS expenses
          FROM transactions
-        WHERE posted_at_iso LIKE ?`,
+        WHERE posted_at_iso LIKE ?
+          AND is_transfer = 0`,
     )
       .bind(`${month}%`)
       .first<{ income: number; expenses: number }>();
