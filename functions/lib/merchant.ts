@@ -47,6 +47,11 @@ const AUTO_RULES: Rule[] = [
   // Credit-card payment from checking — pure transfer (the underlying purchases
   // come in via the credit-card CSV separately).
   { match: /^Chase Credit Card$/, action: { kind: "transfer" }, label: "Chase CC payment" },
+
+  // The receiving side of the same payment, shown on the Chase credit-card CSV.
+  // Both sides need the transfer flag so the payment doesn't get counted as
+  // either income (on the card) or spending (on the checking side).
+  { match: /^AUTOMATIC PAYMENT - THANK/i, action: { kind: "transfer" }, label: "Chase CC payment (CC side)" },
 ];
 
 export function findAutoRule(description: string): AutoAction | null {
