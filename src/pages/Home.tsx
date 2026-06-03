@@ -110,6 +110,18 @@ export default function Home() {
     }
   }
 
+  async function handleSaveNotes(tx: Transaction, notes: string) {
+    const trimmed = notes.trim();
+    // No-op if unchanged.
+    if ((trimmed || null) === (tx.notes || null)) return;
+    try {
+      await api.updateTransaction(tx.id, { notes: trimmed || null });
+      await refresh();
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+
   return (
     <div className="space-y-4">
       {error && (
@@ -189,6 +201,7 @@ export default function Home() {
                 onOpenSplit={() => setSplittingTx(tx)}
                 onClearSplits={handleClearSplits}
                 onOpenMiscIncome={() => setMiscIncomeTx(tx)}
+                onSaveNotes={handleSaveNotes}
               />
             ))}
           </ul>
@@ -255,6 +268,7 @@ function TransactionItem({
   onOpenSplit,
   onClearSplits,
   onOpenMiscIncome,
+  onSaveNotes,
 }: {
   tx: Transaction;
   categories: Category[];
@@ -262,11 +276,28 @@ function TransactionItem({
   onOpenSplit: () => void;
   onClearSplits: (tx: Transaction) => void;
   onOpenMiscIncome: () => void;
+  onSaveNotes: (tx: Transaction, notes: string) => Promise<void>;
 }) {
   const isCredit = tx.amount_cents < 0;
   const hasSplits = tx.splits.length > 0;
   const hasMiscIncome = tx.misc_income_id !== null;
   const isCategorized = hasSplits || tx.category_id !== null || tx.is_transfer || hasMiscIncome;
+  const [editingNote, setEditingNote] = useState(false);
+  const [noteDraft, setNoteDraft] = useState(tx.notes ?? "");
+
+  // Sync local draft if the transaction's notes get updated by a refresh.
+  useEffect(() => {
+    setNoteDraft(tx.notes ?? "");
+  }, [tx.id, tx.notes]);
+
+  async function commitNote() {
+    setEditingNote(false);
+    await onSaveNotes(tx, noteDraft);
+  }
+  function cancelNote() {
+    setNoteDraft(tx.notes ?? "");
+    setEditingNote(false);
+  }
 
   // The visual treatment per the spec:
   //  - uncategorized → highlighted
@@ -292,7 +323,50 @@ function TransactionItem({
               </span>
             )}
           </div>
-          <p className="mt-0.5 truncate text-sm font-medium">{tx.description}</p>
+          {tx.notes && !editingNote ? (
+            <>
+              <p
+                className="mt-0.5 truncate text-sm font-medium cursor-pointer hover:underline"
+                onClick={() => setEditingNote(true)}
+                title="Click to edit"
+              >
+                {tx.notes}
+              </p>
+              <p className="truncate text-xs text-muted">{tx.description}</p>
+            </>
+          ) : !editingNote ? (
+            <div className="mt-0.5 flex items-center gap-2">
+              <p className="truncate text-sm font-medium">{tx.description}</p>
+              <button
+                className="whitespace-nowrap text-xs text-muted hover:text-ink underline"
+                onClick={() => setEditingNote(true)}
+              >
+                + note
+              </button>
+            </div>
+          ) : (
+            <div className="mt-0.5 flex items-center gap-2">
+              <input
+                className="input py-1 text-sm flex-1"
+                autoFocus
+                placeholder={tx.description}
+                value={noteDraft}
+                onChange={(e) => setNoteDraft(e.target.value)}
+                onBlur={commitNote}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") commitNote();
+                  if (e.key === "Escape") cancelNote();
+                }}
+              />
+              <button
+                className="text-xs text-muted hover:text-ink"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={cancelNote}
+              >
+                cancel
+              </button>
+            </div>
+          )}
           {hasSplits && (
             <div className="mt-1 flex flex-wrap items-center gap-1 text-xs text-muted">
               {tx.splits.map((s) => (
