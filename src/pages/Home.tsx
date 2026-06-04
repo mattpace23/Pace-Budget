@@ -16,6 +16,7 @@ type Filter = "all" | "uncategorized" | "categorized" | "transfer";
 export default function Home() {
   const [month, setMonth] = useState<string>(currentMonthIso());
   const [filter, setFilter] = useState<Filter>("uncategorized");
+  const [categoryFilter, setCategoryFilter] = useState<{ id: number; name: string } | null>(null);
   const [data, setData] = useState<TransactionsResponse | null>(null);
   const [scoreboard, setScoreboard] = useState<ScoreboardData | null>(null);
   const [categories, setCategories] = useState<Category[] | null>(null);
@@ -30,7 +31,11 @@ export default function Home() {
     setLoading(true);
     try {
       const [tx, cats, sb] = await Promise.all([
-        api.listTransactions({ month, status: filter }),
+        api.listTransactions({
+          month,
+          status: categoryFilter ? undefined : filter,
+          category_id: categoryFilter?.id,
+        }),
         categories ? Promise.resolve({ categories }) : api.listCategories(),
         api.getScoreboard(month),
       ]);
@@ -42,7 +47,7 @@ export default function Home() {
     } finally {
       setLoading(false);
     }
-  }, [month, filter, categories]);
+  }, [month, filter, categories, categoryFilter]);
 
   useEffect(() => {
     refresh();
@@ -139,9 +144,24 @@ export default function Home() {
         </div>
       )}
 
-      {scoreboard && <Scoreboard data={scoreboard} onChanged={refresh} />}
+      {scoreboard && (
+        <Scoreboard
+          data={scoreboard}
+          onChanged={refresh}
+          onPickCategory={(id, name) => {
+            setCategoryFilter({ id, name });
+            // Scroll the transaction list into view so the user sees the
+            // filtered result immediately.
+            setTimeout(() => {
+              document
+                .getElementById("transactions-list")
+                ?.scrollIntoView({ behavior: "smooth", block: "start" });
+            }, 50);
+          }}
+        />
+      )}
 
-      <div className="card">
+      <div id="transactions-list" className="card">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <label className="text-sm text-muted">
@@ -153,7 +173,7 @@ export default function Home() {
                 onChange={(e) => setMonth(e.target.value)}
               />
             </label>
-            {data && (
+            {data && !categoryFilter && (
               <span className="text-sm text-muted">
                 {data.counts.total} transactions ·{" "}
                 <span
@@ -178,9 +198,35 @@ export default function Home() {
             >
               {rescanning ? "Rescanning…" : "Rescan"}
             </button>
-            <Tabs filter={filter} onChange={setFilter} />
+            {!categoryFilter && <Tabs filter={filter} onChange={setFilter} />}
           </div>
         </div>
+        {categoryFilter && (() => {
+          const cat = scoreboard?.by_category.find((c) => c.id === categoryFilter.id);
+          return (
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-accent/10 px-3 py-2 text-sm">
+              <div>
+                <strong>{categoryFilter.name}</strong>
+                {cat && (
+                  <span className="ml-2 text-muted">
+                    Spent {formatMoney(cat.spent_cents)} of {formatMoney(cat.budget_cents)}
+                    {cat.over_cents > 0 && (
+                      <span className="ml-1 font-medium text-warn">
+                        — {formatMoney(cat.over_cents)} over
+                      </span>
+                    )}
+                  </span>
+                )}
+              </div>
+              <button
+                className="text-sm text-accent underline"
+                onClick={() => setCategoryFilter(null)}
+              >
+                ✕ clear filter
+              </button>
+            </div>
+          );
+        })()}
       </div>
 
       {loading && !data ? (

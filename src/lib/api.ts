@@ -205,11 +205,13 @@ export const api = {
   listTransactions: (opts: {
     month?: string;
     account_id?: number;
+    category_id?: number;
     status?: "all" | "uncategorized" | "categorized" | "transfer";
   } = {}) => {
     const q = new URLSearchParams();
     if (opts.month) q.set("month", opts.month);
     if (opts.account_id) q.set("account_id", String(opts.account_id));
+    if (opts.category_id) q.set("category_id", String(opts.category_id));
     if (opts.status) q.set("status", opts.status);
     const qs = q.toString();
     return request<TransactionsResponse>(`/api/transactions${qs ? `?${qs}` : ""}`);

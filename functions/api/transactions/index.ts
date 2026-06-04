@@ -43,6 +43,9 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
     ? toInt(url.searchParams.get("account_id"))
     : null;
   const status = url.searchParams.get("status") || "all";
+  const categoryId = url.searchParams.get("category_id")
+    ? toInt(url.searchParams.get("category_id"))
+    : null;
 
   const filters: string[] = [`t.posted_at_iso LIKE ?`];
   const bindings: (string | number)[] = [`${month}%`];
@@ -52,7 +55,17 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
     bindings.push(accountId);
   }
 
-  if (status === "uncategorized") {
+  if (categoryId !== null) {
+    // Match transactions categorized directly OR via a split. Once a category
+    // filter is set, the status filter is ignored — they're contradictory
+    // (uncategorized + a category can't both be true).
+    filters.push(
+      `(t.category_id = ? OR EXISTS (SELECT 1 FROM transaction_splits s WHERE s.transaction_id = t.id AND s.category_id = ?))`,
+    );
+    bindings.push(categoryId, categoryId);
+    // No-op: when category filter is set, the status filter is intentionally
+    // skipped — the category itself implies the transaction is categorized.
+  } else if (status === "uncategorized") {
     // Uncategorized = not a transfer, no category, no splits, not attached to misc income.
     filters.push(
       `t.is_transfer = 0 AND t.category_id IS NULL AND t.misc_income_id IS NULL AND NOT EXISTS (SELECT 1 FROM transaction_splits s WHERE s.transaction_id = t.id)`,

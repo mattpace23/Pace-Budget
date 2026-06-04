@@ -5,9 +5,11 @@ import { formatMoney } from "../lib/format";
 export function Scoreboard({
   data,
   onChanged,
+  onPickCategory,
 }: {
   data: ScoreboardData;
   onChanged?: () => void;
+  onPickCategory?: (id: number, name: string) => void;
 }) {
   const remaining = data.remaining_total_cents;
   const overBudget = remaining < 0;
@@ -96,9 +98,12 @@ export function Scoreboard({
       {/* Per-category breakdown */}
       <div className="card">
         <h3 className="text-sm font-semibold text-muted">By category</h3>
+        <p className="mt-0.5 text-xs text-muted">
+          Click a category to see all its transactions below.
+        </p>
         <ul className="mt-3 space-y-2">
           {expenseCategories.map((c) => (
-            <CategoryBar key={c.id} c={c} />
+            <CategoryBar key={c.id} c={c} onClick={onPickCategory} />
           ))}
           {savingsCategories.length > 0 && (
             <>
@@ -106,7 +111,7 @@ export function Scoreboard({
                 Savings
               </li>
               {savingsCategories.map((c) => (
-                <CategoryBar key={c.id} c={c} savings />
+                <CategoryBar key={c.id} c={c} savings onClick={onPickCategory} />
               ))}
             </>
           )}
@@ -345,7 +350,15 @@ function ScoreCard({
   );
 }
 
-function CategoryBar({ c, savings = false }: { c: import("../lib/api").CategoryStatus; savings?: boolean }) {
+function CategoryBar({
+  c,
+  savings = false,
+  onClick,
+}: {
+  c: import("../lib/api").CategoryStatus;
+  savings?: boolean;
+  onClick?: (id: number, name: string) => void;
+}) {
   const pct = c.budget_cents > 0
     ? Math.min(100, (c.spent_cents / c.budget_cents) * 100)
     : c.spent_cents > 0
@@ -354,9 +367,24 @@ function CategoryBar({ c, savings = false }: { c: import("../lib/api").CategoryS
   const over = c.over_cents > 0;
   const under = savings && c.spent_cents < c.budget_cents;
   const isSynthetic = c.id === -1; // the "Uncategorized" line
+  const clickable = onClick && !isSynthetic;
 
   return (
-    <li className="grid items-center gap-3 sm:grid-cols-[10rem_minmax(0,1fr)_14rem]">
+    <li
+      className={[
+        "grid items-center gap-3 rounded-md sm:grid-cols-[10rem_minmax(0,1fr)_14rem]",
+        clickable ? "cursor-pointer hover:bg-ink/5 px-2 -mx-2 py-1" : "",
+      ].join(" ")}
+      onClick={clickable ? () => onClick!(c.id, c.name) : undefined}
+      role={clickable ? "button" : undefined}
+      tabIndex={clickable ? 0 : undefined}
+      onKeyDown={(e) => {
+        if (clickable && (e.key === "Enter" || e.key === " ")) {
+          e.preventDefault();
+          onClick!(c.id, c.name);
+        }
+      }}
+    >
       <div className="flex items-baseline gap-2">
         <span
           className={`text-sm font-medium ${
