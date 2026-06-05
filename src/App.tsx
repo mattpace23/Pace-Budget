@@ -66,22 +66,25 @@ function AuthedShell({ onLogout }: { onLogout: () => void }) {
 
   return (
     <div className="min-h-screen">
-      <header className="border-b border-ink/10 bg-paper">
+      <header className="sticky top-0 z-30 border-b border-ink/10 bg-paper/95 backdrop-blur">
         <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-2 px-4 py-3">
-          <div className="flex items-center gap-4">
-            <h1 className="text-lg font-semibold tracking-tight">Pace Budget</h1>
+          <div className="flex items-center gap-3 sm:gap-4">
+            <h1 className="text-base font-semibold tracking-tight sm:text-lg">Pace Budget</h1>
             <nav className="flex gap-1 text-sm">
               <NavTab to="/">Scoreboard</NavTab>
               <NavTab to="/budget">Budget</NavTab>
               <NavTab to="/upload">Upload</NavTab>
             </nav>
           </div>
-          <button onClick={logout} className="text-sm text-muted hover:text-ink">
+          <button
+            onClick={logout}
+            className="text-sm text-muted hover:text-ink px-2 py-1"
+          >
             Log out
           </button>
         </div>
       </header>
-      <main className="mx-auto max-w-5xl px-4 py-6">
+      <main className="mx-auto max-w-5xl px-3 py-4 sm:px-4 sm:py-6">
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/budget" element={<Budget />} />
@@ -100,7 +103,8 @@ function NavTab({ to, children }: { to: string; children: React.ReactNode }) {
       end={to === "/"}
       className={({ isActive }) =>
         [
-          "rounded-md px-3 py-1.5 transition-colors",
+          // min-w-[44px] hits Apple's recommended tap target on phones.
+          "inline-flex min-w-[44px] items-center justify-center rounded-md px-3 py-2 transition-colors",
           isActive
             ? "bg-ink text-paper"
             : "text-muted hover:bg-ink/5 hover:text-ink",

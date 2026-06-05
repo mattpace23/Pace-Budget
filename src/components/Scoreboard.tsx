@@ -122,8 +122,86 @@ export function Scoreboard({
       {data.misc_income.length > 0 && (
         <MiscIncomeBucketsSection buckets={data.misc_income} onChanged={onChanged} />
       )}
+
+      {/* Monthly trend — savings balance over time. */}
+      <MonthlyTrendSection data={data} />
     </div>
   );
+}
+
+function MonthlyTrendSection({ data }: { data: ScoreboardData }) {
+  // Build the full history including this month.
+  const allDeltas = [...data.savings.prior_month_deltas, data.savings.this_month];
+  if (allDeltas.length === 0) return null;
+
+  // Compute cumulative balance after each month.
+  let balance = data.savings.starting_balance_cents;
+  const rows = allDeltas.map((d) => {
+    balance += d.delta_cents;
+    return {
+      month: d.month,
+      contribution: d.savings_contribution_cents,
+      overspending: d.overspending_cents,
+      delta: d.delta_cents,
+      balance,
+    };
+  });
+
+  // For a sparkline-style bar: find max absolute balance to scale.
+  const maxAbs = Math.max(1, ...rows.map((r) => Math.abs(r.balance)));
+
+  return (
+    <div className="card">
+      <h3 className="text-sm font-semibold text-muted">Monthly trend</h3>
+      <p className="mt-0.5 text-xs text-muted">
+        Savings balance over time. Each row is a month; the bar visualizes
+        the cumulative balance (green positive, red negative).
+      </p>
+      <ul className="mt-3 divide-y divide-ink/10">
+        {rows.map((r) => {
+          const isPositive = r.balance >= 0;
+          const widthPct = Math.min(100, (Math.abs(r.balance) / maxAbs) * 100);
+          return (
+            <li
+              key={r.month}
+              className="grid items-center gap-3 py-2 sm:grid-cols-[6rem_minmax(0,1fr)_12rem]"
+            >
+              <div className="text-sm font-medium tabular-nums">
+                {formatMonth(r.month)}
+              </div>
+              <div className="relative h-3 w-full">
+                {/* Zero line centered */}
+                <div className="absolute inset-y-0 left-1/2 w-px bg-ink/20" />
+                {/* Bar extends left for negative, right for positive */}
+                <div
+                  className={`absolute top-0 bottom-0 ${
+                    isPositive ? "left-1/2 bg-accent" : "right-1/2 bg-warn"
+                  } rounded-sm`}
+                  style={{ width: `${widthPct / 2}%` }}
+                />
+              </div>
+              <div className="text-right text-xs tabular-nums">
+                <span className={isPositive ? "text-accent font-semibold" : "text-warn font-semibold"}>
+                  {formatMoney(r.balance)}
+                </span>
+                <span className="text-muted">
+                  {" "}
+                  · {r.delta >= 0 ? "+" : ""}
+                  {formatMoney(r.delta)} this month
+                </span>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+function formatMonth(yyyyMm: string): string {
+  const [y, m] = yyyyMm.split("-").map(Number);
+  const d = new Date(y, m - 1, 1);
+  return d.toLocaleString("en-US", { month: "short", year: "2-digit" });
 }
 
 function MiscIncomeBucketsSection({
@@ -333,9 +411,13 @@ function ScoreCard({
       : "text-ink";
   return (
     <div className="card">
-      <p className="text-xs uppercase tracking-wide text-muted">{label}</p>
-      <p className={`mt-1 text-2xl font-semibold tabular-nums ${valueColor}`}>{value}</p>
-      <p className="mt-1 text-xs text-muted">{sublabel}</p>
+      <p className="text-[10px] uppercase tracking-wide text-muted sm:text-xs">{label}</p>
+      <p
+        className={`mt-1 text-xl font-semibold tabular-nums sm:text-2xl ${valueColor}`}
+      >
+        {value}
+      </p>
+      <p className="mt-1 text-xs text-muted leading-snug">{sublabel}</p>
       {typeof progressPct === "number" && (
         <div className="mt-3 h-2 overflow-hidden rounded-full bg-ink/10">
           <div

@@ -384,7 +384,7 @@ function TransactionItem({
             <div className="mt-0.5 flex items-center gap-2">
               <p className="truncate text-sm font-medium">{tx.description}</p>
               <button
-                className="whitespace-nowrap text-xs text-muted hover:text-ink underline"
+                className="whitespace-nowrap rounded-md px-2 py-1 text-xs text-muted hover:bg-ink/5 hover:text-ink"
                 onClick={() => setEditingNote(true)}
               >
                 + note
@@ -453,7 +453,7 @@ function TransactionItem({
             <>
               {tx.suggested_category_id !== null && tx.category_id === null && !tx.is_transfer && (
                 <button
-                  className="whitespace-nowrap rounded-md bg-accent/10 px-2 py-1 text-xs font-medium text-accent hover:bg-accent/20"
+                  className="min-h-[36px] whitespace-nowrap rounded-md bg-accent/10 px-3 py-1.5 text-xs font-medium text-accent hover:bg-accent/20"
                   onClick={() => onCategoryChange(tx, String(tx.suggested_category_id))}
                   title="Apply the category you used last time for this merchant"
                 >
@@ -461,7 +461,7 @@ function TransactionItem({
                 </button>
               )}
               <select
-                className="input w-full max-w-[180px] sm:w-auto"
+                className="input min-w-[140px] sm:w-auto"
                 value={
                   tx.is_transfer
                     ? "transfer"
