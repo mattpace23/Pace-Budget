@@ -1,7 +1,7 @@
 // GET   /api/settings  → returns all settings as an object
 // PATCH /api/settings  → upsert one or more settings
 
-import { json, badRequest, serverError, dollarsToCents } from "../lib/db";
+import { json, badRequest, serverError } from "../lib/db";
 
 interface Env {
   DB: D1Database;
@@ -16,9 +16,16 @@ interface SettingRow {
 // Known settings keys + how to validate them.
 // Anything in this map is allowed via PATCH; anything else is rejected.
 const VALIDATORS: Record<string, (v: unknown) => string | null> = {
+  // The field name says cents, so the value IS already in cents — do NOT
+  // multiply by 100 again. Accept a finite integer (or numeric string).
   savings_starting_balance_cents: (v) => {
-    const cents = dollarsToCents(v);
-    if (cents === null) return null;
+    let cents: number | null = null;
+    if (typeof v === "number" && Number.isFinite(v)) cents = Math.round(v);
+    else if (typeof v === "string" && v.trim() !== "") {
+      const n = Number(v.replace(/[$,\s]/g, ""));
+      cents = Number.isFinite(n) ? Math.round(n) : null;
+    }
+    if (cents === null || cents < 0) return null;
     return String(cents);
   },
   savings_starting_as_of_iso: (v) => {
