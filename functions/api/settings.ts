@@ -33,6 +33,15 @@ const VALIDATORS: Record<string, (v: unknown) => string | null> = {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return null;
     return v;
   },
+  // SimpleFin: the user authorizes external cron callers with this shared secret.
+  // A random ~32 char string is recommended.
+  simplefin_cron_secret: (v) => {
+    if (v === null) return ""; // allow clearing
+    if (typeof v !== "string") return null;
+    const trimmed = v.trim();
+    if (trimmed.length > 0 && trimmed.length < 16) return null;
+    return trimmed;
+  },
 };
 
 export const onRequestGet: PagesFunction<Env> = async (ctx) => {

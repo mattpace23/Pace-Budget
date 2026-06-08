@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, type Category } from "../lib/api";
 import { formatMoney, parseDollarsToCents } from "../lib/format";
+import { SimpleFinSection } from "../components/SimpleFinSection";
 
 export default function Budget() {
   const [categories, setCategories] = useState<Category[] | null>(null);
@@ -130,6 +131,8 @@ export default function Budget() {
           </button>
         </div>
       )}
+
+      <SimpleFinSection />
 
       <section className="card">
         <h2 className="text-lg font-semibold">Savings tracker</h2>

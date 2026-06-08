@@ -282,4 +282,36 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ disposition }),
     }),
+
+  simplefinConfigure: (input: { setup_token?: string; access_url?: string }) =>
+    request<{ ok: true; access_url_saved: true }>(`/api/simplefin/configure`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  simplefinStatus: () =>
+    request<{
+      configured: boolean;
+      fetch_error: string | null;
+      remote_accounts: { id: string; name: string; org: string; balance: string }[];
+      local_accounts: {
+        id: number;
+        name: string;
+        simplefin_account_id: string | null;
+        simplefin_last_sync_at: number | null;
+      }[];
+    }>(`/api/simplefin/status`),
+  simplefinMap: (account_id: number, simplefin_account_id: string | null) =>
+    request<{ ok: true }>(`/api/simplefin/map`, {
+      method: "POST",
+      body: JSON.stringify({ account_id, simplefin_account_id }),
+    }),
+  simplefinSync: () =>
+    request<{
+      ok: true;
+      synced_accounts: number;
+      new_transactions: number;
+      per_account: { account_id: number; name: string; new: number }[];
+      errors: string[];
+      warning?: string;
+    }>(`/api/simplefin/sync`, { method: "POST" }),
 };
